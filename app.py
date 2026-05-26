@@ -31,8 +31,8 @@ from src.rule_miner import (
 
 
 APP_ROOT = Path(__file__).parent
-INPUT_FILE = APP_ROOT / "data" / "input" / "bank_statement_2026_01_raw.xlsx"
-HISTORICAL_RULE_SOURCE_FILE = APP_ROOT / "data" / "input" / "bank_statement_2026_01_updated.xlsx"
+INPUT_FILE = APP_ROOT / "data" / "input" / "YF-Jan-For visual-f_demo.xlsx"
+HISTORICAL_RULE_SOURCE_FILE = INPUT_FILE
 CATEGORY_RULES_FILE = APP_ROOT / "config" / "category_rules.yaml"
 PROJECT_RULES_FILE = APP_ROOT / "config" / "project_rules.yaml"
 RULES_DATABASE_FILE = APP_ROOT / "database" / "rules.db"
