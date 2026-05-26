@@ -1,4 +1,6 @@
 from pathlib import Path
+import base64
+import html
 import re
 from difflib import SequenceMatcher
 from sqlite3 import connect
@@ -31,6 +33,10 @@ from src.rule_miner import (
 
 
 APP_ROOT = Path(__file__).parent
+ASSETS_DIR = APP_ROOT / "assets"
+LOGO_FILE = ASSETS_DIR / "logo.png"
+LOGO_URL = "https://static.tildacdn.net/tild3430-3534-4232-b237-623139346565/YoungFolks-circle-42.png"
+STYLES_FILE = APP_ROOT / "styles.css"
 INPUT_FILE = APP_ROOT / "data" / "input" / "YF-Jan-For visual-f_demo.xlsx"
 HISTORICAL_RULE_SOURCE_FILE = INPUT_FILE
 CATEGORY_RULES_FILE = APP_ROOT / "config" / "category_rules.yaml"
@@ -74,6 +80,343 @@ DISPLAY_NAMES = {
 
 st.set_page_config(page_title="NGO Finance Dashboard", layout="wide")
 
+APP_CSS = """
+:root {
+    --yf-green: #0a8527;
+    --yf-mint: #dff4d8;
+    --yf-cream: #eeeedd;
+    --yf-yellow: #ffd84d;
+    --yf-pink: #ff6f91;
+    --yf-blue: #55b6ff;
+    --yf-ink: #171717;
+    --yf-muted: #6b6b5f;
+    --yf-card: rgba(255, 255, 255, 0.92);
+    --yf-border: rgba(23, 23, 23, 0.10);
+    --yf-shadow: 0 18px 45px rgba(28, 61, 31, 0.10);
+}
+
+html, body, [data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(circle at top left, rgba(255, 216, 77, 0.22), transparent 26rem),
+        radial-gradient(circle at top right, rgba(85, 182, 255, 0.16), transparent 28rem),
+        linear-gradient(180deg, #fffdf8 0%, #f8f8ee 48%, #ffffff 100%);
+    color: var(--yf-ink);
+}
+
+[data-testid="stHeader"] {
+    background: transparent;
+}
+
+.block-container {
+    max-width: 1280px;
+    padding-top: 2rem;
+    padding-bottom: 4rem;
+}
+
+.yf-brand-header {
+    position: relative;
+    overflow: hidden;
+    margin: 0 auto 1.4rem;
+    padding: clamp(1.75rem, 4vw, 3.2rem) 1.25rem;
+    border: 1px solid var(--yf-border);
+    border-radius: 28px;
+    background:
+        linear-gradient(135deg, rgba(238, 238, 221, 0.90), rgba(255, 255, 255, 0.94)),
+        linear-gradient(90deg, rgba(10, 133, 39, 0.12), rgba(255, 216, 77, 0.15));
+    box-shadow: var(--yf-shadow);
+    text-align: center;
+}
+
+.yf-brand-header:before,
+.yf-brand-header:after {
+    content: "";
+    position: absolute;
+    border-radius: 999px;
+    opacity: 0.62;
+    pointer-events: none;
+}
+
+.yf-brand-header:before {
+    width: 11rem;
+    height: 11rem;
+    left: -4rem;
+    top: -4rem;
+    background: var(--yf-yellow);
+}
+
+.yf-brand-header:after {
+    width: 9rem;
+    height: 9rem;
+    right: -3rem;
+    bottom: -3rem;
+    background: var(--yf-mint);
+}
+
+.yf-logo {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: clamp(82px, 12vw, 142px);
+    max-width: 38%;
+    height: auto;
+    margin: 0 auto 1rem;
+    filter: drop-shadow(0 10px 18px rgba(10, 133, 39, 0.16));
+}
+
+.yf-brand-kicker {
+    position: relative;
+    z-index: 1;
+    margin: 0 0 0.25rem;
+    color: var(--yf-green);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.yf-brand-title {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    color: var(--yf-ink);
+    font-size: clamp(2.1rem, 5vw, 4.4rem);
+    font-weight: 900;
+    line-height: 0.96;
+}
+
+.yf-brand-subtitle {
+    position: relative;
+    z-index: 1;
+    max-width: 760px;
+    margin: 0.9rem auto 0;
+    color: var(--yf-muted);
+    font-size: clamp(1rem, 1.8vw, 1.22rem);
+    line-height: 1.55;
+}
+
+.yf-source-pill {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 1.15rem;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid rgba(10, 133, 39, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.75);
+    color: var(--yf-green);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+h1, h2, h3, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {
+    color: var(--yf-ink);
+    letter-spacing: 0;
+}
+
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3 {
+    font-weight: 850;
+}
+
+.yf-section-spacer {
+    height: 1.15rem;
+}
+
+div[data-testid="stMetric"] {
+    min-height: 116px;
+    padding: 1.05rem 1.05rem 0.95rem;
+    border: 1px solid var(--yf-border);
+    border-radius: 22px;
+    background: var(--yf-card);
+    box-shadow: 0 14px 30px rgba(25, 36, 22, 0.07);
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+div[data-testid="stMetric"]:hover {
+    transform: translateY(-2px);
+    border-color: rgba(10, 133, 39, 0.26);
+    box-shadow: 0 18px 38px rgba(10, 133, 39, 0.13);
+}
+
+div[data-testid="stMetricLabel"] p {
+    color: var(--yf-muted);
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+div[data-testid="stMetricValue"] {
+    color: var(--yf-ink);
+    font-weight: 900;
+}
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #ffffff 0%, var(--yf-cream) 100%);
+    border-right: 1px solid rgba(10, 133, 39, 0.12);
+}
+
+[data-testid="stSidebar"] [data-testid="stMetric"] {
+    min-height: 94px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.82);
+}
+
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    color: var(--yf-green);
+    font-weight: 900;
+}
+
+button[kind="primary"],
+.stButton > button[kind="primary"] {
+    border: 0;
+    border-radius: 999px;
+    background: var(--yf-green);
+    color: #ffffff;
+    font-weight: 800;
+    box-shadow: 0 12px 26px rgba(10, 133, 39, 0.22);
+}
+
+.stButton > button {
+    border-radius: 999px;
+    border-color: rgba(10, 133, 39, 0.24);
+    font-weight: 750;
+}
+
+.stButton > button:hover {
+    border-color: var(--yf-green);
+    color: var(--yf-green);
+}
+
+[data-baseweb="tab-list"] {
+    gap: 0.65rem;
+    padding: 0.35rem;
+    border: 1px solid var(--yf-border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.74);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.04);
+}
+
+[data-baseweb="tab"] {
+    min-height: 42px;
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    color: var(--yf-muted);
+    font-weight: 800;
+}
+
+[data-baseweb="tab"][aria-selected="true"] {
+    background: var(--yf-green);
+    color: #ffffff;
+}
+
+[data-baseweb="tab-highlight"] {
+    display: none;
+}
+
+[data-testid="stPlotlyChart"] {
+    margin: 1rem 0 1.35rem;
+    padding: clamp(0.75rem, 2vw, 1.35rem);
+    border: 1px solid var(--yf-border);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: var(--yf-shadow);
+}
+
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"] {
+    padding: 0.35rem;
+    border: 1px solid var(--yf-border);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.045);
+    overflow: hidden;
+}
+
+[data-testid="stExpander"] {
+    border: 1px solid rgba(10, 133, 39, 0.14);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.78);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.035);
+}
+
+[data-testid="stAlert"] {
+    border-radius: 18px;
+}
+
+div[data-baseweb="select"] > div,
+div[data-baseweb="base-input"] > div,
+div[data-baseweb="input"] > div,
+textarea,
+input {
+    border-radius: 14px !important;
+}
+
+.stDateInput, .stMultiSelect, .stTextInput, .stSelectbox, .stSlider {
+    padding: 0.35rem 0;
+}
+
+hr {
+    border-color: rgba(10, 133, 39, 0.14);
+}
+
+@media (max-width: 700px) {
+    .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .yf-brand-header {
+        border-radius: 22px;
+    }
+
+    [data-baseweb="tab-list"] {
+        border-radius: 22px;
+        align-items: stretch;
+    }
+
+    [data-baseweb="tab"] {
+        padding-left: 0.65rem;
+        padding-right: 0.65rem;
+    }
+}
+"""
+
+
+def load_custom_css() -> None:
+    css = STYLES_FILE.read_text() if STYLES_FILE.exists() else APP_CSS
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+
+def image_data_uri(path: Path) -> str:
+    suffix = path.suffix.lower().lstrip(".") or "png"
+    image_type = "jpeg" if suffix == "jpg" else suffix
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/{image_type};base64,{encoded}"
+
+
+def render_brand_header() -> None:
+    logo_src = image_data_uri(LOGO_FILE) if LOGO_FILE.exists() else LOGO_URL
+    st.markdown(
+        f"""
+        <section class="yf-brand-header">
+            <img src="{logo_src}" class="yf-logo" alt="Young Folks logo">
+            <p class="yf-brand-kicker">Young Folks LV</p>
+            <h1 class="yf-brand-title">NGO Finance Dashboard</h1>
+            <p class="yf-brand-subtitle">
+                A clear, community-minded view of income, expenses, projects, and classification quality.
+            </p>
+            <span class="yf-source-pill">Source file: {html.escape(INPUT_FILE.name)}</span>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def section_gap() -> None:
+    st.markdown('<div class="yf-section-spacer"></div>', unsafe_allow_html=True)
+
 
 @st.cache_data
 def get_historical_analysis() -> dict:
@@ -83,8 +426,8 @@ def get_historical_analysis() -> dict:
 
 
 def main() -> None:
-    st.title("NGO Finance Dashboard")
-    st.caption(INPUT_FILE.name)
+    load_custom_css()
+    render_brand_header()
 
     if not INPUT_FILE.exists():
         st.error(f"Input file not found: {INPUT_FILE}")
@@ -161,6 +504,7 @@ def render_import_review(transactions: pd.DataFrame, validation_issues: pd.DataF
     summary_cols[4].metric("Expense rows", f"{expense_rows:,}")
     summary_cols[5].metric("Removed rows", f"{debug_summary['removed_rows_count']:,}")
 
+    section_gap()
     st.subheader("Debug Summary")
     debug_cols = st.columns(4)
     debug_cols[0].metric("Original Excel row count", f"{debug_summary['original_excel_row_count']:,}")
@@ -169,9 +513,12 @@ def render_import_review(transactions: pd.DataFrame, validation_issues: pd.DataF
     debug_cols[3].write("")
     st.caption(f"Removal reasons: {debug_summary['removed_rows_reason']}")
 
+    section_gap()
     render_historical_source_summary(transactions)
+    section_gap()
     render_historical_match_check(transactions)
 
+    section_gap()
     st.subheader("All Transactions")
     filtered = filter_transactions(transactions, key_prefix="import")
     st.caption(f"Showing {len(filtered):,} of {len(transactions):,} rows.")
@@ -312,6 +659,7 @@ def render_manual_review(transactions: pd.DataFrame) -> None:
         include_text=True,
     )
 
+    section_gap()
     st.subheader("Manual Classification Editor")
     render_manual_editor(filtered, transactions)
 
@@ -382,6 +730,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     kpis[3].metric("Categorized %", f"{categorized_pct:.1f}%")
     kpis[4].metric("Unclassified %", f"{unclassified_pct:.1f}%")
 
+    section_gap()
     chart_df = filtered.copy()
     chart_df["month_sort"] = pd.to_datetime(chart_df["date"], errors="coerce").dt.strftime("%Y-%m")
     chart_df["month_label"] = pd.to_datetime(chart_df["date"], errors="coerce").dt.strftime("%B")
@@ -412,8 +761,10 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         labels={"month_label": "Month"},
     )
     monthly_chart.update_yaxes(tickformat=",.2f")
+    style_chart(monthly_chart)
     st.plotly_chart(monthly_chart, use_container_width=True)
 
+    section_gap()
     category_chart_df = build_income_expense_comparison(chart_df, "category")
     category_chart = px.bar(
         category_chart_df,
@@ -426,6 +777,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         labels={"amount": "Amount", "label": "Category"},
     )
     category_chart.update_xaxes(tickformat=",.2f")
+    style_chart(category_chart)
     st.plotly_chart(category_chart, use_container_width=True)
     render_drilldown_selector(
         filtered,
@@ -435,6 +787,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         key="dashboard-category-drilldown",
     )
 
+    section_gap()
     project_chart_df = build_income_expense_comparison(chart_df, "project_name")
     project_chart = px.bar(
         project_chart_df,
@@ -447,6 +800,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         labels={"amount": "Amount", "label": "Project Name"},
     )
     project_chart.update_xaxes(tickformat=",.2f")
+    style_chart(project_chart)
     st.plotly_chart(project_chart, use_container_width=True)
     render_drilldown_selector(
         filtered,
@@ -456,6 +810,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         key="dashboard-project-drilldown",
     )
 
+    section_gap()
     top_counterparties = aggregate_amount(chart_df, "counterparty_raw", "signed_amount", None).head(15)
     counterparty_chart = px.bar(
         top_counterparties,
@@ -466,7 +821,36 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         labels={"amount": "Amount", "label": "Counterparty"},
     )
     counterparty_chart.update_xaxes(tickformat=",.2f")
+    style_chart(counterparty_chart)
     st.plotly_chart(counterparty_chart, use_container_width=True)
+
+
+def style_chart(chart) -> None:
+    chart.update_layout(
+        colorway=["#0a8527", "#ff6f91", "#55b6ff", "#ffd84d", "#171717"],
+        font={"family": "Inter, Arial, sans-serif", "color": "#171717"},
+        title={"font": {"size": 22, "color": "#171717"}, "x": 0.02},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(255,255,255,0)",
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        },
+        margin={"l": 24, "r": 24, "t": 72, "b": 36},
+    )
+    chart.update_xaxes(
+        gridcolor="rgba(23,23,23,0.08)",
+        zerolinecolor="rgba(23,23,23,0.12)",
+        title_font={"color": "#6b6b5f"},
+    )
+    chart.update_yaxes(
+        gridcolor="rgba(23,23,23,0.08)",
+        zerolinecolor="rgba(23,23,23,0.12)",
+        title_font={"color": "#6b6b5f"},
+    )
 
 
 def render_active_rules_overview() -> None:
