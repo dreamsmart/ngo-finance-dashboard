@@ -37,23 +37,28 @@ def clean_bank_statement(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
     income_amounts = cleaned["K (KREDITS)"].apply(parse_amount)
     expense_amounts = cleaned["D (DEBETS)"].apply(parse_amount)
 
-    income_filled = cleaned["K (KREDITS)"].apply(is_filled)
-    expense_filled = cleaned["D (DEBETS)"].apply(is_filled)
+    income_filled = income_amounts.apply(has_numeric_amount)
+    expense_filled = expense_amounts.apply(has_numeric_amount)
 
-    transaction_type = pd.Series("", index=cleaned.index, dtype=object)
+    transaction_type = pd.Series("Invalid", index=cleaned.index, dtype=object)
     transaction_type.loc[income_filled & ~expense_filled] = "Income"
     transaction_type.loc[expense_filled & ~income_filled] = "Expense"
-    transaction_type.loc[income_filled & expense_filled] = "Invalid"
-    transaction_type.loc[~income_filled & ~expense_filled] = "Invalid"
+
+    amount_income = pd.Series(0.0, index=cleaned.index, dtype="Float64")
+    amount_expense = pd.Series(0.0, index=cleaned.index, dtype="Float64")
+    amount_income.loc[income_filled] = income_amounts.loc[income_filled]
+    amount_expense.loc[expense_filled] = expense_amounts.loc[expense_filled]
 
     signed_amount = pd.Series(pd.NA, index=cleaned.index, dtype="Float64")
-    signed_amount.loc[transaction_type == "Income"] = income_amounts.loc[transaction_type == "Income"]
-    signed_amount.loc[transaction_type == "Expense"] = -expense_amounts.loc[transaction_type == "Expense"]
+    signed_amount.loc[transaction_type == "Income"] = amount_income.loc[transaction_type == "Income"]
+    signed_amount.loc[transaction_type == "Expense"] = -amount_expense.loc[transaction_type == "Expense"]
 
     missing_description = ~cleaned["Purpose"].apply(is_filled)
     missing_counterparty = ~cleaned["Name Surname"].apply(is_filled)
     missing_date = parsed_dates.isna()
-    invalid_amount = (income_filled & income_amounts.isna()) | (expense_filled & expense_amounts.isna())
+    raw_income_filled = cleaned["K (KREDITS)"].apply(is_filled)
+    raw_expense_filled = cleaned["D (DEBETS)"].apply(is_filled)
+    invalid_amount = (raw_income_filled & income_amounts.isna()) | (raw_expense_filled & expense_amounts.isna())
 
     cleaned["date"] = parsed_dates
     cleaned["excel_row"] = cleaned.index + 2
@@ -64,8 +69,8 @@ def clean_bank_statement(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
     cleaned["account_number"] = cleaned["Konta numurs"]
     cleaned["bank_swift"] = cleaned["Bankas SWIFT"]
     cleaned["description"] = cleaned["Purpose"]
-    cleaned["amount_income"] = income_amounts
-    cleaned["amount_expense"] = expense_amounts
+    cleaned["amount_income"] = amount_income
+    cleaned["amount_expense"] = amount_expense
     cleaned["transaction_type"] = transaction_type
     cleaned["signed_amount"] = signed_amount
     cleaned["description_clean"] = cleaned["Purpose"].apply(clean_text)
@@ -146,6 +151,13 @@ def is_filled(value: Any) -> bool:
         return False
 
     return str(value).strip() != ""
+
+
+def has_numeric_amount(value: Any) -> bool:
+    if pd.isna(value):
+        return False
+
+    return float(value) != 0
 
 
 def parse_amount(value: Any) -> float | pd.NA:
