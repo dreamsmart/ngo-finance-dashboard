@@ -786,13 +786,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         return
 
     section_gap()
-    sort_by = st.selectbox(
-        "Sort category performance by",
-        ["Income", "Expenses"],
-        key="dashboard-category-sort",
-    )
-    category_chart = build_category_performance_chart(chart_filtered, sort_by)
-    st.plotly_chart(category_chart, use_container_width=True)
+    render_category_performance_section(chart_filtered)
 
     section_gap()
     st.subheader("Division Breakdown for Top 5 Categories")
@@ -1102,15 +1096,23 @@ def build_monthly_management_chart(filtered: pd.DataFrame):
     return chart
 
 
-def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
-    summary = financial_summary(filtered, "dashboard_category")
-    sort_map = {
-        "Income": "Income",
-        "Expenses": "Expenses",
-    }
-    sort_column = sort_map.get(sort_by, "Income")
-    summary = summary.sort_values(sort_column, ascending=False)
-    category_order = summary["label"].tolist()
+def render_category_performance_section(filtered: pd.DataFrame) -> None:
+    net_chart = build_category_net_result_chart(filtered)
+    st.plotly_chart(net_chart, use_container_width=True)
+
+    month_options = ordered_month_labels(filtered)
+    latest_month = month_options[-1] if month_options else "No date"
+    selected_month = st.selectbox(
+        "Select month for detailed income/expense view",
+        month_options,
+        index=month_options.index(latest_month),
+        key="dashboard-category-detail-month",
+    )
+    detail_chart = build_category_income_expense_detail_chart(filtered, selected_month)
+    st.plotly_chart(detail_chart, use_container_width=True)
+
+
+def build_category_net_result_chart(filtered: pd.DataFrame):
     months = ordered_month_labels(filtered)
 
     chart_data = (
@@ -1121,12 +1123,17 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
         .reset_index()
     )
     chart_data = chart_data.rename(columns={"amount_income": "Income", "amount_expense": "Expenses"})
+    chart_data["Net Result"] = chart_data["Income"] - chart_data["Expenses"]
 
-    income_palette = ["#14532d", "#2f7d45", "#68a878", "#a7d0ad", "#d5ead7"]
-    expense_palette = ["#9f2f45", "#c84d62", "#e18491", "#efb3bc", "#f7d8dd"]
-    bar_width = 0.32
-    metric_gap = 0.08
-    month_gap = 0.28
+    latest_month = months[-1] if months else "No date"
+    latest_summary = chart_data[chart_data["dashboard_month_label"].eq(latest_month)].copy()
+    latest_summary["sort_value"] = latest_summary["Net Result"].abs()
+    category_order = latest_summary.sort_values("sort_value", ascending=False)["dashboard_category"].tolist()
+    missing_categories = [category for category in chart_data["dashboard_category"].unique() if category not in category_order]
+    category_order.extend(missing_categories)
+
+    bar_width = 0.34
+    month_gap = 0.18
     category_gap = 1.0
 
     positioned_rows = []
@@ -1141,35 +1148,19 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
                 chart_data["dashboard_category"].eq(category)
                 & chart_data["dashboard_month_label"].eq(month)
             ]
-            income = float(row["Income"].sum()) if not row.empty else 0.0
-            expense = float(row["Expenses"].sum()) if not row.empty else 0.0
-            income_x = x_cursor
-            expense_x = x_cursor + bar_width + metric_gap
-            month_center = (income_x + expense_x) / 2
-
-            positioned_rows.extend(
-                [
-                    {
-                        "x": income_x,
-                        "Amount": income,
-                        "Category": category,
-                        "Month": month,
-                        "Metric": "Income",
-                        "Color": income_palette[month_index % len(income_palette)],
-                    },
-                    {
-                        "x": expense_x,
-                        "Amount": expense,
-                        "Category": category,
-                        "Month": month,
-                        "Metric": "Expenses",
-                        "Color": expense_palette[month_index % len(expense_palette)],
-                    },
-                ]
+            net_result = float(row["Net Result"].sum()) if not row.empty else 0.0
+            positioned_rows.append(
+                {
+                    "x": x_cursor,
+                    "Net Result": net_result,
+                    "Category": category,
+                    "Month": month,
+                    "Color": "#1f7a3d" if net_result >= 0 else "#c84d62",
+                }
             )
-            category_positions.extend([income_x, expense_x])
-            month_centers.append({"x": month_center, "Month": month})
-            x_cursor += (bar_width * 2) + metric_gap + month_gap
+            category_positions.append(x_cursor)
+            month_centers.append({"x": x_cursor, "Month": month})
+            x_cursor += bar_width + month_gap
 
         if category_positions:
             category_centers.append((sum(category_positions) / len(category_positions), category))
@@ -1179,45 +1170,47 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
     for row in positioned_rows:
         chart.add_bar(
             x=[row["x"]],
-            y=[row["Amount"]],
+            y=[row["Net Result"]],
             width=bar_width,
             marker_color=row["Color"],
             showlegend=False,
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
                 "Month: %{customdata[1]}<br>"
-                "Metric: %{customdata[2]}<br>"
-                "Amount: %{y:,.2f}<extra></extra>"
+                "Net Result: %{y:,.2f}<extra></extra>"
             ),
-            customdata=[[row["Category"], row["Month"], row["Metric"]]],
+            customdata=[[row["Category"], row["Month"]]],
         )
 
-    for month_index, month in enumerate(months):
-        chart.add_scatter(
-            x=[None],
-            y=[None],
-            mode="markers",
-            name=month,
-            marker={
-                "color": income_palette[month_index % len(income_palette)],
-                "size": 11,
-                "symbol": "square",
-            },
-            showlegend=True,
-        )
+    chart.add_scatter(
+        x=[None],
+        y=[None],
+        mode="markers",
+        name="Positive net result",
+        marker={"color": "#1f7a3d", "size": 11, "symbol": "square"},
+        showlegend=True,
+    )
+    chart.add_scatter(
+        x=[None],
+        y=[None],
+        mode="markers",
+        name="Negative net result",
+        marker={"color": "#c84d62", "size": 11, "symbol": "square"},
+        showlegend=True,
+    )
 
     chart.update_layout(
-        title="Category Performance — Income vs Expenses by Month",
+        title="Category Performance — Net Result by Category",
         barmode="overlay",
         bargap=0,
-        height=620,
+        height=520,
         plot_bgcolor="#ffffff",
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 22, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 96, "b": 148},
+        margin={"l": 34, "r": 24, "t": 86, "b": 148},
         legend={
-            "title": {"text": "Month"},
+            "title": {"text": ""},
             "orientation": "h",
             "yanchor": "bottom",
             "y": 1.04,
@@ -1227,7 +1220,7 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
         },
         annotations=[
             {
-                "text": "Green bars show income. Red bars show expenses. Darker/lighter tones distinguish months.",
+                "text": "Net Result = Income - Expenses. Month labels sit below each bar.",
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0,
@@ -1238,6 +1231,7 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
             }
         ],
     )
+    chart.add_hline(y=0, line_color="rgba(28, 31, 35, 0.45)", line_width=1.4)
     for month_marker in month_centers:
         chart.add_annotation(
             text=month_marker["Month"],
@@ -1249,6 +1243,110 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
             textangle=-90 if len(category_order) > 5 else 0,
             font={"size": 10, "color": "#6b7280"},
         )
+    chart.update_yaxes(
+        title="Net Result",
+        tickformat=",.2f",
+        gridcolor="rgba(28, 31, 35, 0.08)",
+        zeroline=False,
+    )
+    chart.update_xaxes(
+        title="Category",
+        tickmode="array",
+        tickvals=[center for center, _ in category_centers],
+        ticktext=[category for _, category in category_centers],
+        tickangle=-25 if len(category_order) > 5 else 0,
+        showgrid=False,
+        tickfont={"size": 12},
+    )
+    return chart
+
+
+def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_label: str):
+    month_rows = filtered[filtered["dashboard_month_label"].eq(month_label)].copy()
+    summary = financial_summary(month_rows, "dashboard_category").sort_values("Total Volume", ascending=False)
+    category_order = summary["label"].tolist()
+    chart_data = (
+        month_rows.groupby("dashboard_category", dropna=False)[["amount_income", "amount_expense"]]
+        .sum()
+        .reset_index()
+        .rename(columns={"amount_income": "Income", "amount_expense": "Expenses"})
+    )
+
+    bar_width = 0.34
+    metric_gap = 0.10
+    category_gap = 0.85
+    positioned_rows = []
+    category_centers = []
+    x_cursor = 0.0
+
+    for category in category_order:
+        row = chart_data[chart_data["dashboard_category"].eq(category)]
+        income = float(row["Income"].sum()) if not row.empty else 0.0
+        expenses = float(row["Expenses"].sum()) if not row.empty else 0.0
+        income_x = x_cursor
+        expense_x = x_cursor + bar_width + metric_gap
+        positioned_rows.extend(
+            [
+                {"x": income_x, "Amount": income, "Category": category, "Metric": "Income", "Color": "#1f7a3d"},
+                {"x": expense_x, "Amount": expenses, "Category": category, "Metric": "Expenses", "Color": "#c84d62"},
+            ]
+        )
+        category_centers.append(((income_x + expense_x) / 2, category))
+        x_cursor += (bar_width * 2) + metric_gap + category_gap
+
+    chart = go.Figure()
+    for row in positioned_rows:
+        chart.add_bar(
+            x=[row["x"]],
+            y=[row["Amount"]],
+            width=bar_width,
+            marker_color=row["Color"],
+            name=row["Metric"],
+            showlegend=False,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                "Metric: %{customdata[1]}<br>"
+                "Amount: %{y:,.2f}<extra></extra>"
+            ),
+            customdata=[[row["Category"], row["Metric"]]],
+        )
+
+    chart.add_scatter(
+        x=[None],
+        y=[None],
+        mode="markers",
+        name="Income",
+        marker={"color": "#1f7a3d", "size": 11, "symbol": "square"},
+        showlegend=True,
+    )
+    chart.add_scatter(
+        x=[None],
+        y=[None],
+        mode="markers",
+        name="Expenses",
+        marker={"color": "#c84d62", "size": 11, "symbol": "square"},
+        showlegend=True,
+    )
+    chart.update_layout(
+        title=f"Category Income vs Expenses — {month_label}",
+        barmode="overlay",
+        bargap=0,
+        height=500,
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
+        title_font={"size": 20, "color": "#151515"},
+        margin={"l": 34, "r": 24, "t": 76, "b": 118},
+        legend={
+            "title": {"text": ""},
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.04,
+            "xanchor": "right",
+            "x": 1,
+            "font": {"size": 12},
+        },
+    )
     chart.update_yaxes(
         title="Amount",
         tickformat=",.2f",
