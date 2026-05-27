@@ -4,6 +4,7 @@ import html
 import re
 from difflib import SequenceMatcher
 from sqlite3 import connect
+from typing import Any
 
 import pandas as pd
 import plotly.express as px
@@ -1325,12 +1326,12 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 22, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 86, "b": 280},
+        margin={"l": 34, "r": 24, "t": 86, "b": 320},
         legend={
             "title": {"text": ""},
             "orientation": "h",
             "yanchor": "top",
-            "y": -0.48,
+            "y": -0.58,
             "xanchor": "center",
             "x": 0.5,
             "font": {"size": 12},
@@ -1595,12 +1596,12 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 92, "b": 280},
+        margin={"l": 34, "r": 24, "t": 92, "b": 330},
         legend={
             "title": {"text": "Month"},
             "orientation": "h",
             "yanchor": "top",
-            "y": -0.48,
+            "y": -0.60,
             "xanchor": "center",
             "x": 0.5,
             "font": {"size": 12},
@@ -1699,22 +1700,15 @@ def build_expense_composition_chart(filtered: pd.DataFrame):
         lambda row: row["Expenses"] / row["Month Total"] if row["Month Total"] else 0,
         axis=1,
     )
-    expenses = add_short_label_column(expenses, "dashboard_category", "dashboard_category_short")
-    chart = px.bar(
+    return build_stacked_percentage_chart(
         expenses,
-        x="dashboard_month_label",
-        y="Share",
-        color="dashboard_category_short",
         title="Expense Composition by Month",
-        labels={"dashboard_month_label": "Month", "dashboard_category_short": "Expense Category"},
-        category_orders={"dashboard_month_label": ordered_month_labels(filtered)},
-        hover_data={"dashboard_category": True, "Expenses": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
-        color_discrete_map=composition_color_map(expenses["dashboard_category_short"].unique()),
+        category_title="Expense Category",
+        amount_column="Expenses",
+        amount_title="Expenses",
+        y_axis_title="Share of monthly expenses",
+        month_order=ordered_month_labels(filtered),
     )
-    chart.update_layout(barmode="stack", title="Expense Composition by Month")
-    chart.update_yaxes(tickformat=".0%", range=[0, 1], title="Share of monthly expenses")
-    style_chart(chart)
-    return chart
 
 
 def build_revenue_dependency_chart(filtered: pd.DataFrame):
@@ -1736,21 +1730,96 @@ def build_revenue_dependency_chart(filtered: pd.DataFrame):
         lambda row: row["Income"] / row["Month Total"] if row["Month Total"] else 0,
         axis=1,
     )
-    income = add_short_label_column(income, "dashboard_category", "dashboard_category_short")
-    chart = px.bar(
+    return build_stacked_percentage_chart(
         income,
+        title="Revenue Dependency by Month",
+        category_title="Income Category",
+        amount_column="Income",
+        amount_title="Income",
+        y_axis_title="Share of monthly income",
+        month_order=ordered_month_labels(filtered),
+    )
+
+
+def build_stacked_percentage_chart(
+    data: pd.DataFrame,
+    title: str,
+    category_title: str,
+    amount_column: str,
+    amount_title: str,
+    y_axis_title: str,
+    month_order: list[str],
+):
+    chart_data = add_short_label_column(data, "dashboard_category", "dashboard_category_short")
+    chart_data["Segment Label"] = chart_data.apply(
+        lambda row: (
+            f"{row['dashboard_category_short']}<br>{row['Share']:.0%}"
+            if row["Share"] >= 0.075 and row[amount_column] > 0
+            else ""
+        ),
+        axis=1,
+    )
+    category_count = max(1, chart_data["dashboard_category_short"].nunique())
+    month_count = max(1, chart_data["dashboard_month_label"].nunique())
+    chart_height = max(500, 360 + (category_count * 34) + (month_count * 22))
+
+    chart = px.bar(
+        chart_data,
         x="dashboard_month_label",
         y="Share",
         color="dashboard_category_short",
-        title="Revenue Dependency by Month",
-        labels={"dashboard_month_label": "Month", "dashboard_category_short": "Income Category"},
-        category_orders={"dashboard_month_label": ordered_month_labels(filtered)},
-        hover_data={"dashboard_category": True, "Income": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
-        color_discrete_map=composition_color_map(income["dashboard_category_short"].unique()),
+        text="Segment Label",
+        title=title,
+        labels={"dashboard_month_label": "Month", "dashboard_category_short": category_title},
+        category_orders={"dashboard_month_label": month_order},
+        custom_data=["dashboard_category", "dashboard_month_label", amount_column, "Share"],
+        color_discrete_map=composition_color_map(chart_data["dashboard_category_short"].unique()),
     )
-    chart.update_layout(barmode="stack")
-    chart.update_yaxes(tickformat=".0%", range=[0, 1], title="Share of monthly income")
+    chart.update_traces(
+        texttemplate="%{text}",
+        textposition="inside",
+        insidetextanchor="middle",
+        textfont={"color": "#ffffff", "size": 12},
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Month: %{customdata[1]}<br>"
+            "Share: %{customdata[3]:.1%}<br>"
+            f"{amount_title}: " + "%{customdata[2]:,.2f}<extra></extra>"
+        ),
+    )
+    chart.update_layout(
+        barmode="stack",
+        title=title,
+        height=chart_height,
+        bargap=0.34 if month_count <= 3 else 0.24,
+        uniformtext={"minsize": 10, "mode": "hide"},
+        legend={
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.18,
+            "xanchor": "center",
+            "x": 0.5,
+            "title": {"text": category_title},
+        },
+        margin={"l": 24, "r": 24, "t": 72, "b": 130},
+    )
+    chart.update_yaxes(tickformat=".0%", range=[0, 1], title=y_axis_title)
     style_chart(chart)
+    chart.update_layout(
+        height=chart_height,
+        bargap=0.34 if month_count <= 3 else 0.24,
+        uniformtext={"minsize": 10, "mode": "hide"},
+        legend={
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.18,
+            "xanchor": "center",
+            "x": 0.5,
+            "title": {"text": category_title},
+        },
+        margin={"l": 24, "r": 24, "t": 72, "b": 130},
+    )
     return chart
 
 
@@ -1776,7 +1845,7 @@ def collapse_to_top_categories(df: pd.DataFrame, category_column: str, amount_co
 
 
 def composition_color_map(labels: Any) -> dict[str, str]:
-    palette = ["#0a8527", "#ff6f91", "#55b6ff", "#ffd84d", "#171717", "#8fd18f"]
+    palette = ["#146c43", "#c84d62", "#2563a8", "#6d4aa8", "#374151", "#0f766e"]
     return {
         label: ("#9ca3af" if label == "Other" else palette[index % len(palette)])
         for index, label in enumerate(labels)
@@ -2408,7 +2477,7 @@ def add_multilevel_x_axis_labels(
         chart.add_annotation(
             text=f"<b>{wrap_axis_label(label, group_label_max_chars)}</b>",
             x=center,
-            y=-0.13,
+            y=-0.18,
             xref="x",
             yref="paper",
             showarrow=False,
@@ -2420,7 +2489,7 @@ def add_multilevel_x_axis_labels(
         chart.add_annotation(
             text=str(month_marker["Month"]),
             x=float(month_marker["x"]),
-            y=-0.29,
+            y=-0.36,
             xref="x",
             yref="paper",
             showarrow=False,
