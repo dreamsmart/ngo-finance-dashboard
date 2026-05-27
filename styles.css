@@ -203,6 +203,15 @@ div[data-testid="stMetricValue"] {
     line-height: 1.15;
 }
 
+.yf-kpi-card em {
+    display: block;
+    margin-top: 0.55rem;
+    color: var(--yf-muted);
+    font-size: 0.78rem;
+    font-style: normal;
+    line-height: 1.25;
+}
+
 .yf-kpi-positive strong {
     color: var(--yf-green);
 }

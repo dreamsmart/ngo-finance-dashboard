@@ -286,6 +286,15 @@ div[data-testid="stMetricValue"] {
     line-height: 1.15;
 }
 
+.yf-kpi-card em {
+    display: block;
+    margin-top: 0.55rem;
+    color: var(--yf-muted);
+    font-size: 0.78rem;
+    font-style: normal;
+    line-height: 1.25;
+}
+
 .yf-kpi-positive strong {
     color: var(--yf-green);
 }
@@ -772,19 +781,22 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
 
     section_gap()
     sort_by = st.selectbox(
-        "Sort division performance by",
-        ["Net Result", "Income", "Expenses"],
-        key="dashboard-division-sort",
+        "Sort category performance by",
+        ["Total Volume", "Income", "Expenses", "Net Result"],
+        key="dashboard-category-sort",
     )
-    division_chart = build_division_performance_chart(filtered, sort_by)
-    st.plotly_chart(division_chart, use_container_width=True)
+    category_chart = build_category_performance_chart(filtered, sort_by)
+    st.plotly_chart(category_chart, use_container_width=True)
 
     section_gap()
-    st.subheader("Subdivision Breakdown")
-    st.caption("Top five divisions ranked by total financial volume: income + expenses.")
-    for division in top_divisions_by_volume(filtered, limit=5):
-        subdivision_chart = build_subdivision_breakdown_chart(filtered, division)
-        st.plotly_chart(subdivision_chart, use_container_width=True)
+    st.subheader("Division Breakdown for Top 5 Categories")
+    st.caption("Top five categories ranked by total financial volume: income + expenses.")
+    for category in top_categories_by_volume(filtered, limit=5):
+        division_chart = build_category_division_breakdown_chart(filtered, category)
+        if division_chart is None:
+            st.info(f"No division data available for this category: {category}.")
+        else:
+            st.plotly_chart(division_chart, use_container_width=True)
 
     section_gap()
     expense_cols = st.columns([1.15, 0.85])
@@ -794,17 +806,17 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     with expense_cols[1]:
         grant_dependency = build_income_dependency_table(filtered)
         st.subheader("Revenue Dependency")
-        st.caption("Income structure by category, useful for grant and donation reliance checks.")
+        st.caption("Income structure by category. Use this to check grants/donations reliance.")
         st.dataframe(grant_dependency, use_container_width=True, hide_index=True, height=390)
 
     section_gap()
-    with st.expander("Detailed Division Drilldown", expanded=False):
-        selected_division = st.selectbox(
-            "Select division for detailed transactions",
-            ["All divisions"] + sorted(filtered["dashboard_division"].dropna().unique().tolist()),
-            key="dashboard-division-drilldown",
+    with st.expander("Detailed Category / Transaction Drilldown", expanded=False):
+        selected_category = st.selectbox(
+            "Select category for detailed transactions",
+            ["All categories"] + sorted(filtered["dashboard_category"].dropna().unique().tolist()),
+            key="dashboard-category-drilldown",
         )
-        drilldown = filtered if selected_division == "All divisions" else filtered[filtered["dashboard_division"] == selected_division]
+        drilldown = filtered if selected_category == "All categories" else filtered[filtered["dashboard_category"] == selected_category]
         render_drilldown_summary(drilldown)
         st.dataframe(
             format_transactions(drilldown, TRANSACTION_COLUMNS),
@@ -932,29 +944,33 @@ def filter_dashboard_data(transactions: pd.DataFrame) -> pd.DataFrame:
 
 
 def render_management_kpis(filtered: pd.DataFrame) -> None:
-    summary = financial_summary(filtered, "dashboard_division")
+    summary = financial_summary(filtered, "dashboard_category")
     total_income = float(filtered["amount_income"].sum())
     total_expenses = float(filtered["amount_expense"].sum())
     net_result = total_income - total_expenses
     largest_revenue = top_label(summary, "Income", "No income")
     largest_expense = top_label(summary, "Expenses", "No expenses")
+    dependency_value, dependency_hint = grant_donation_dependency(filtered)
 
-    kpis = st.columns(5)
+    kpis = st.columns(6)
     kpis[0].markdown(kpi_card("Total Income", format_money(total_income), "positive"), unsafe_allow_html=True)
     kpis[1].markdown(kpi_card("Total Expenses", format_money(total_expenses), "negative"), unsafe_allow_html=True)
     kpis[2].markdown(
         kpi_card("Net Result", format_money(net_result), "positive" if net_result >= 0 else "negative"),
         unsafe_allow_html=True,
     )
-    kpis[3].markdown(kpi_card("Largest Revenue Division", largest_revenue, "neutral"), unsafe_allow_html=True)
-    kpis[4].markdown(kpi_card("Largest Expense Division", largest_expense, "neutral"), unsafe_allow_html=True)
+    kpis[3].markdown(kpi_card("Largest Revenue Category", largest_revenue, "neutral"), unsafe_allow_html=True)
+    kpis[4].markdown(kpi_card("Largest Expense Category", largest_expense, "neutral"), unsafe_allow_html=True)
+    kpis[5].markdown(kpi_card("Grant / Donation Dependency", dependency_value, "neutral", dependency_hint), unsafe_allow_html=True)
 
 
-def kpi_card(label: str, value: str, tone: str) -> str:
+def kpi_card(label: str, value: str, tone: str, hint: str = "") -> str:
+    hint_markup = f"<em>{html.escape(hint)}</em>" if hint else ""
     return f"""
     <div class="yf-kpi-card yf-kpi-{tone}">
         <span>{html.escape(label)}</span>
         <strong>{html.escape(value)}</strong>
+        {hint_markup}
     </div>
     """
 
@@ -965,6 +981,40 @@ def top_label(summary: pd.DataFrame, column: str, fallback: str) -> str:
         return fallback
     row = rows.iloc[0]
     return f"{row['label']} ({format_money(row[column])})"
+
+
+def grant_donation_dependency(filtered: pd.DataFrame) -> tuple[str, str]:
+    income_rows = filtered[filtered["amount_income"].gt(0)].copy()
+    total_income = float(income_rows["amount_income"].sum())
+    if total_income == 0:
+        return "N/A", "No income in current filter."
+
+    dependency_mask = income_rows["dashboard_category"].apply(is_grant_or_donation_label)
+    if not dependency_mask.any():
+        return "N/A", "Map grant/donation categories manually."
+
+    dependency_income = float(income_rows.loc[dependency_mask, "amount_income"].sum())
+    return f"{dependency_income / total_income:.1%}", ""
+
+
+def is_grant_or_donation_label(value: Any) -> bool:
+    normalized = re.sub(r"[^\w\s]", " ", str(value).strip().lower())
+    normalized = re.sub(r"\s+", " ", normalized)
+    keywords = {
+        "grant",
+        "grants",
+        "donation",
+        "donations",
+        "ziedojums",
+        "ziedojumi",
+        "dotacija",
+        "subsidy",
+        "funding",
+        "valsts kase",
+        "esf",
+        "erasmus",
+    }
+    return any(keyword in normalized for keyword in keywords)
 
 
 def build_monthly_management_chart(filtered: pd.DataFrame):
@@ -1016,12 +1066,16 @@ def build_monthly_management_chart(filtered: pd.DataFrame):
     return chart
 
 
-def build_division_performance_chart(filtered: pd.DataFrame, sort_by: str):
-    summary = financial_summary(filtered, "dashboard_division")
-    sort_map = {"Income": "Income", "Expenses": "Expenses", "Net Result": "Net Result"}
+def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
+    summary = financial_summary(filtered, "dashboard_category")
+    sort_map = {
+        "Income": "Income",
+        "Expenses": "Expenses",
+        "Net Result": "Net Result",
+        "Total Volume": "Total Volume",
+    }
     sort_column = sort_map.get(sort_by, "Net Result")
-    ascending = sort_column == "Net Result"
-    summary = summary.sort_values(sort_column, ascending=ascending)
+    summary = summary.sort_values(sort_column, ascending=True)
 
     chart_data = summary.melt(
         id_vars="label",
@@ -1036,7 +1090,40 @@ def build_division_performance_chart(filtered: pd.DataFrame, sort_by: str):
         color="Metric",
         barmode="group",
         orientation="h",
-        title="Division Performance — Income, Expenses, Net Result",
+        title="Category Performance — Income, Expenses, Net Result",
+        labels={"label": "Category"},
+        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91", "Net Result": "#171717"},
+    )
+    chart.update_xaxes(tickformat=",.2f")
+    style_chart(chart)
+    return chart
+
+
+def top_categories_by_volume(filtered: pd.DataFrame, limit: int) -> list[str]:
+    summary = financial_summary(filtered, "dashboard_category")
+    return summary.sort_values("Total Volume", ascending=False)["label"].head(limit).tolist()
+
+
+def build_category_division_breakdown_chart(filtered: pd.DataFrame, category: str):
+    category_rows = filtered[filtered["dashboard_category"].eq(category)].copy()
+    if not has_specific_division_data(category_rows):
+        return None
+
+    summary = financial_summary(category_rows, "dashboard_division").sort_values("Total Volume", ascending=True).tail(12)
+    chart_data = summary.melt(
+        id_vars="label",
+        value_vars=["Income", "Expenses", "Net Result"],
+        var_name="Metric",
+        value_name="Amount",
+    )
+    chart = px.bar(
+        chart_data,
+        x="Amount",
+        y="label",
+        color="Metric",
+        barmode="group",
+        orientation="h",
+        title=f"Division Breakdown — {category}",
         labels={"label": "Division"},
         color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91", "Net Result": "#171717"},
     )
@@ -1045,43 +1132,10 @@ def build_division_performance_chart(filtered: pd.DataFrame, sort_by: str):
     return chart
 
 
-def top_divisions_by_volume(filtered: pd.DataFrame, limit: int) -> list[str]:
-    summary = financial_summary(filtered, "dashboard_division")
-    return summary.sort_values("Total Volume", ascending=False)["label"].head(limit).tolist()
-
-
-def build_subdivision_breakdown_chart(filtered: pd.DataFrame, division: str):
-    division_rows = filtered[filtered["dashboard_division"].eq(division)].copy()
-    use_category_fallback = not has_specific_subdivision_data(division_rows)
-    label_column = "dashboard_category" if use_category_fallback else "dashboard_subdivision"
-    label_title = "Category" if use_category_fallback else "Subdivision"
-    summary = financial_summary(division_rows, label_column).sort_values("Total Volume", ascending=True).tail(12)
-    chart_data = summary.melt(
-        id_vars="label",
-        value_vars=["Income", "Expenses", "Net Result"],
-        var_name="Metric",
-        value_name="Amount",
-    )
-    chart = px.bar(
-        chart_data,
-        x="Amount",
-        y="label",
-        color="Metric",
-        barmode="group",
-        orientation="h",
-        title=f"Subdivision Breakdown — {division}" + (" (category fallback)" if use_category_fallback else ""),
-        labels={"label": label_title},
-        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91", "Net Result": "#171717"},
-    )
-    chart.update_xaxes(tickformat=",.2f")
-    style_chart(chart)
-    return chart
-
-
-def has_specific_subdivision_data(rows: pd.DataFrame) -> bool:
-    if "Sub" not in rows.columns:
+def has_specific_division_data(rows: pd.DataFrame) -> bool:
+    if "Division" not in rows.columns:
         return False
-    cleaned = rows["Sub"].fillna("").astype(str).str.strip()
+    cleaned = rows["Division"].fillna("").astype(str).str.strip()
     return cleaned.ne("").any()
 
 
