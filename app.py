@@ -1112,6 +1112,7 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
     sort_column = sort_map.get(sort_by, "Income")
     summary = summary.sort_values(sort_column, ascending=False)
     category_order = summary["label"].tolist()
+    months = ordered_month_labels(filtered)
 
     chart_data = (
         filtered.groupby(["dashboard_category", "dashboard_month_sort", "dashboard_month_label"], dropna=False)[
@@ -1120,31 +1121,136 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
         .sum()
         .reset_index()
     )
-    chart_data = chart_data.rename(columns={"amount_income": "Income", "amount_expense": "Expenses"}).melt(
-        id_vars=["dashboard_category", "dashboard_month_sort", "dashboard_month_label"],
-        value_vars=["Income", "Expenses"],
-        var_name="Metric",
-        value_name="Amount",
-    )
-    chart = px.bar(
-        chart_data,
-        x="dashboard_category",
-        y="Amount",
-        color="dashboard_month_label",
-        pattern_shape="Metric",
-        barmode="group",
+    chart_data = chart_data.rename(columns={"amount_income": "Income", "amount_expense": "Expenses"})
+
+    income_palette = ["#14532d", "#2f7d45", "#68a878", "#a7d0ad", "#d5ead7"]
+    expense_palette = ["#9f2f45", "#c84d62", "#e18491", "#efb3bc", "#f7d8dd"]
+    bar_width = 0.32
+    metric_gap = 0.08
+    month_gap = 0.28
+    category_gap = 1.0
+
+    positioned_rows = []
+    category_centers = []
+    x_cursor = 0.0
+
+    for category in category_order:
+        category_positions = []
+        for month_index, month in enumerate(months):
+            row = chart_data[
+                chart_data["dashboard_category"].eq(category)
+                & chart_data["dashboard_month_label"].eq(month)
+            ]
+            income = float(row["Income"].sum()) if not row.empty else 0.0
+            expense = float(row["Expenses"].sum()) if not row.empty else 0.0
+            income_x = x_cursor
+            expense_x = x_cursor + bar_width + metric_gap
+
+            positioned_rows.extend(
+                [
+                    {
+                        "x": income_x,
+                        "Amount": income,
+                        "Category": category,
+                        "Month": month,
+                        "Metric": "Income",
+                        "Color": income_palette[month_index % len(income_palette)],
+                    },
+                    {
+                        "x": expense_x,
+                        "Amount": expense,
+                        "Category": category,
+                        "Month": month,
+                        "Metric": "Expenses",
+                        "Color": expense_palette[month_index % len(expense_palette)],
+                    },
+                ]
+            )
+            category_positions.extend([income_x, expense_x])
+            x_cursor += (bar_width * 2) + metric_gap + month_gap
+
+        if category_positions:
+            category_centers.append((sum(category_positions) / len(category_positions), category))
+        x_cursor += category_gap
+
+    chart = go.Figure()
+    for row in positioned_rows:
+        chart.add_bar(
+            x=[row["x"]],
+            y=[row["Amount"]],
+            width=bar_width,
+            marker_color=row["Color"],
+            showlegend=False,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                "Month: %{customdata[1]}<br>"
+                "Metric: %{customdata[2]}<br>"
+                "Amount: %{y:,.2f}<extra></extra>"
+            ),
+            customdata=[[row["Category"], row["Month"], row["Metric"]]],
+        )
+
+    for month_index, month in enumerate(months):
+        chart.add_scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            name=month,
+            marker={
+                "color": income_palette[month_index % len(income_palette)],
+                "size": 11,
+                "symbol": "square",
+            },
+            showlegend=True,
+        )
+
+    chart.update_layout(
         title="Category Performance — Income vs Expenses by Month",
-        labels={"dashboard_category": "Category", "dashboard_month_label": "Month"},
-        category_orders={
-            "dashboard_category": category_order,
-            "dashboard_month_label": ordered_month_labels(filtered),
-            "Metric": ["Income", "Expenses"],
+        barmode="overlay",
+        bargap=0,
+        height=620,
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
+        title_font={"size": 22, "color": "#151515"},
+        margin={"l": 34, "r": 24, "t": 92, "b": 118},
+        legend={
+            "title": {"text": "Month"},
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.04,
+            "xanchor": "right",
+            "x": 1,
+            "font": {"size": 12},
         },
-        hover_data={"dashboard_month_sort": False, "Amount": ":,.2f"},
+        annotations=[
+            {
+                "text": "Green bars show income. Red bars show expenses. Darker/lighter tones distinguish months.",
+                "xref": "paper",
+                "yref": "paper",
+                "x": 0,
+                "y": 1.09,
+                "showarrow": False,
+                "align": "left",
+                "font": {"size": 12, "color": "#60646c"},
+            }
+        ],
     )
-    chart.update_yaxes(tickformat=",.2f")
-    chart.update_xaxes(tickangle=-35)
-    style_chart(chart)
+    chart.update_yaxes(
+        title="Amount",
+        tickformat=",.2f",
+        gridcolor="rgba(28, 31, 35, 0.08)",
+        zerolinecolor="rgba(28, 31, 35, 0.18)",
+    )
+    chart.update_xaxes(
+        title="Category",
+        tickmode="array",
+        tickvals=[center for center, _ in category_centers],
+        ticktext=[category for _, category in category_centers],
+        tickangle=-25 if len(category_order) > 5 else 0,
+        showgrid=False,
+        tickfont={"size": 12},
+    )
     return chart
 
 
