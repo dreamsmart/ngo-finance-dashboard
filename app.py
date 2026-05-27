@@ -798,7 +798,8 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     st.subheader("Division Breakdown for Top 5 Categories")
     st.caption("Top five categories ranked by total financial volume: income + expenses.")
     for category in top_categories_by_volume(chart_filtered, limit=5):
-        division_chart = build_category_division_breakdown_chart(chart_filtered, category)
+        division_month = select_breakdown_month(chart_filtered, category, f"top5-{normalize_label(category)}")
+        division_chart = build_category_division_breakdown_chart(chart_filtered, category, division_month)
         if division_chart is None:
             st.info(f"No division data available for this category: {category}.")
         else:
@@ -1152,22 +1153,33 @@ def top_categories_by_volume(filtered: pd.DataFrame, limit: int) -> list[str]:
     return summary.sort_values("Total Volume", ascending=False)["label"].head(limit).tolist()
 
 
-def build_category_division_breakdown_chart(filtered: pd.DataFrame, category: str):
+def select_breakdown_month(filtered: pd.DataFrame, category: str, key_suffix: str) -> str:
+    category_rows = filtered[filtered["dashboard_category"].eq(category)]
+    month_options = ordered_month_labels(category_rows)
+    latest_month = month_options[-1] if month_options else "No date"
+    return st.selectbox(
+        f"Month for {category}",
+        month_options,
+        index=month_options.index(latest_month),
+        key=f"dashboard-breakdown-month-{key_suffix}",
+    )
+
+
+def build_category_division_breakdown_chart(filtered: pd.DataFrame, category: str, month_label: str):
     category_rows = filtered[filtered["dashboard_category"].eq(category)].copy()
+    category_rows = category_rows[category_rows["dashboard_month_label"].eq(month_label)]
     if not has_specific_division_data(category_rows):
         return None
 
     summary = financial_summary(category_rows, "dashboard_division").sort_values("Total Volume", ascending=True).tail(12)
     division_order = summary["label"].tolist()
     chart_data = (
-        category_rows.groupby(["dashboard_division", "dashboard_month_sort", "dashboard_month_label"], dropna=False)[
-            ["amount_income", "amount_expense"]
-        ]
+        category_rows.groupby("dashboard_division", dropna=False)[["amount_income", "amount_expense"]]
         .sum()
         .reset_index()
         .rename(columns={"amount_income": "Income", "amount_expense": "Expenses"})
         .melt(
-            id_vars=["dashboard_division", "dashboard_month_sort", "dashboard_month_label"],
+            id_vars="dashboard_division",
             value_vars=["Income", "Expenses"],
             var_name="Metric",
             value_name="Amount",
@@ -1177,18 +1189,17 @@ def build_category_division_breakdown_chart(filtered: pd.DataFrame, category: st
         chart_data,
         x="Amount",
         y="dashboard_division",
-        color="dashboard_month_label",
-        pattern_shape="Metric",
+        color="Metric",
         barmode="group",
         orientation="h",
-        title=f"Division Breakdown — {category}",
-        labels={"dashboard_division": "Division", "dashboard_month_label": "Month"},
+        title=f"Division Breakdown — {category} ({month_label})",
+        labels={"dashboard_division": "Division"},
         category_orders={
             "dashboard_division": division_order,
-            "dashboard_month_label": ordered_month_labels(category_rows),
             "Metric": ["Income", "Expenses"],
         },
-        hover_data={"dashboard_month_sort": False, "Amount": ":,.2f"},
+        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91"},
+        hover_data={"Amount": ":,.2f"},
     )
     chart.update_xaxes(tickformat=",.2f")
     style_chart(chart)
@@ -1207,7 +1218,12 @@ def render_custom_division_breakdown(filtered: pd.DataFrame) -> None:
         st.info("Select a category to view division breakdown.")
         return
 
-    chart = build_category_division_breakdown_chart(filtered, selected_category)
+    selected_month = select_breakdown_month(
+        filtered,
+        selected_category,
+        f"custom-{normalize_label(selected_category)}",
+    )
+    chart = build_category_division_breakdown_chart(filtered, selected_category, selected_month)
     if chart is None:
         st.info(f"No division data available for this category: {selected_category}.")
         return
@@ -1227,14 +1243,7 @@ def build_expense_composition_chart(filtered: pd.DataFrame):
         .sum()
         .reset_index(name="Expenses")
     )
-    top_categories = (
-        expenses.groupby("dashboard_category")["Expenses"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(12)
-        .index
-    )
-    expenses = expenses[expenses["dashboard_category"].isin(top_categories)]
+    expenses = collapse_to_top_categories(expenses, "dashboard_category", "Expenses", top_n=5)
     if expenses.empty:
         expenses = pd.DataFrame({
             "dashboard_month_sort": ["No date"],
@@ -1256,7 +1265,7 @@ def build_expense_composition_chart(filtered: pd.DataFrame):
         labels={"dashboard_month_label": "Month", "dashboard_category": "Expense Category"},
         category_orders={"dashboard_month_label": ordered_month_labels(filtered)},
         hover_data={"Expenses": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
-        color_discrete_sequence=["#0a8527", "#ff6f91", "#55b6ff", "#ffd84d", "#171717", "#8fd18f"],
+        color_discrete_map=composition_color_map(expenses["dashboard_category"].unique()),
     )
     chart.update_layout(barmode="stack", title="Expense Composition by Month")
     chart.update_yaxes(tickformat=".0%", range=[0, 1], title="Share of monthly expenses")
@@ -1270,14 +1279,7 @@ def build_revenue_dependency_chart(filtered: pd.DataFrame):
         .sum()
         .reset_index(name="Income")
     )
-    top_categories = (
-        income.groupby("dashboard_category")["Income"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(12)
-        .index
-    )
-    income = income[income["dashboard_category"].isin(top_categories)]
+    income = collapse_to_top_categories(income, "dashboard_category", "Income", top_n=5)
     if income.empty:
         income = pd.DataFrame({
             "dashboard_month_sort": ["No date"],
@@ -1299,12 +1301,41 @@ def build_revenue_dependency_chart(filtered: pd.DataFrame):
         labels={"dashboard_month_label": "Month", "dashboard_category": "Income Category"},
         category_orders={"dashboard_month_label": ordered_month_labels(filtered)},
         hover_data={"Income": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
-        color_discrete_sequence=["#0a8527", "#ff6f91", "#55b6ff", "#ffd84d", "#171717", "#8fd18f"],
+        color_discrete_map=composition_color_map(income["dashboard_category"].unique()),
     )
     chart.update_layout(barmode="stack")
     chart.update_yaxes(tickformat=".0%", range=[0, 1], title="Share of monthly income")
     style_chart(chart)
     return chart
+
+
+def collapse_to_top_categories(df: pd.DataFrame, category_column: str, amount_column: str, top_n: int) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    top_categories = (
+        df.groupby(category_column)[amount_column]
+        .sum()
+        .sort_values(ascending=False)
+        .head(top_n)
+        .index
+    )
+    collapsed = df.copy()
+    collapsed[category_column] = collapsed[category_column].where(collapsed[category_column].isin(top_categories), "Other")
+    return (
+        collapsed.groupby(["dashboard_month_sort", "dashboard_month_label", category_column], dropna=False)[amount_column]
+        .sum()
+        .reset_index()
+        .sort_values(["dashboard_month_sort", amount_column], ascending=[True, False])
+    )
+
+
+def composition_color_map(labels: Any) -> dict[str, str]:
+    palette = ["#0a8527", "#ff6f91", "#55b6ff", "#ffd84d", "#171717", "#8fd18f"]
+    return {
+        label: ("#9ca3af" if label == "Other" else palette[index % len(palette)])
+        for index, label in enumerate(labels)
+    }
 
 
 def render_drilldown_summary(drilldown: pd.DataFrame) -> None:
