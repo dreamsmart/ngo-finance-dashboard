@@ -1460,7 +1460,7 @@ def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_lab
         title="",
         tickmode="array",
         tickvals=[center for center, _ in category_centers],
-        ticktext=[wrap_axis_label(category) for _, category in category_centers],
+        ticktext=[wrap_axis_label(category, max_chars=14) for _, category in category_centers],
         tickangle=-20 if len(category_order) > 5 else 0,
         showgrid=False,
         tickfont={"size": 12},
@@ -1699,16 +1699,17 @@ def build_expense_composition_chart(filtered: pd.DataFrame):
         lambda row: row["Expenses"] / row["Month Total"] if row["Month Total"] else 0,
         axis=1,
     )
+    expenses = add_short_label_column(expenses, "dashboard_category", "dashboard_category_short")
     chart = px.bar(
         expenses,
         x="dashboard_month_label",
         y="Share",
-        color="dashboard_category",
+        color="dashboard_category_short",
         title="Expense Composition by Month",
-        labels={"dashboard_month_label": "Month", "dashboard_category": "Expense Category"},
+        labels={"dashboard_month_label": "Month", "dashboard_category_short": "Expense Category"},
         category_orders={"dashboard_month_label": ordered_month_labels(filtered)},
-        hover_data={"Expenses": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
-        color_discrete_map=composition_color_map(expenses["dashboard_category"].unique()),
+        hover_data={"dashboard_category": True, "Expenses": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
+        color_discrete_map=composition_color_map(expenses["dashboard_category_short"].unique()),
     )
     chart.update_layout(barmode="stack", title="Expense Composition by Month")
     chart.update_yaxes(tickformat=".0%", range=[0, 1], title="Share of monthly expenses")
@@ -1735,16 +1736,17 @@ def build_revenue_dependency_chart(filtered: pd.DataFrame):
         lambda row: row["Income"] / row["Month Total"] if row["Month Total"] else 0,
         axis=1,
     )
+    income = add_short_label_column(income, "dashboard_category", "dashboard_category_short")
     chart = px.bar(
         income,
         x="dashboard_month_label",
         y="Share",
-        color="dashboard_category",
+        color="dashboard_category_short",
         title="Revenue Dependency by Month",
-        labels={"dashboard_month_label": "Month", "dashboard_category": "Income Category"},
+        labels={"dashboard_month_label": "Month", "dashboard_category_short": "Income Category"},
         category_orders={"dashboard_month_label": ordered_month_labels(filtered)},
-        hover_data={"Income": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
-        color_discrete_map=composition_color_map(income["dashboard_category"].unique()),
+        hover_data={"dashboard_category": True, "Income": ":,.2f", "Share": ":.1%", "dashboard_month_sort": False},
+        color_discrete_map=composition_color_map(income["dashboard_category_short"].unique()),
     )
     chart.update_layout(barmode="stack")
     chart.update_yaxes(tickformat=".0%", range=[0, 1], title="Share of monthly income")
@@ -2336,7 +2338,7 @@ def normalize_label(value: str) -> str:
 
 
 def wrap_axis_label(value: str, max_chars: int = 18) -> str:
-    words = str(value).split()
+    words = short_chart_label(value).split()
     if not words:
         return ""
 
@@ -2350,6 +2352,49 @@ def wrap_axis_label(value: str, max_chars: int = 18) -> str:
             current = word
     lines.append(current)
     return "<br>".join(lines)
+
+
+def short_chart_label(value: str, max_words: int = 2) -> str:
+    label = str(value).strip()
+    if not label:
+        return ""
+    if len(label) <= 14 and len(label.split()) <= max_words:
+        return label
+
+    cleaned = re.sub(r"\([^)]*\)", "", label)
+    cleaned = re.sub(r"\b(19|20)\d{2}\b", "", cleaned)
+    cleaned = re.sub(r"\bjan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec\b", "", cleaned, flags=re.IGNORECASE)
+    words = [word.strip(" -_/|,:;") for word in cleaned.split()]
+    words = [word for word in words if word]
+    stop_words = {
+        "in",
+        "of",
+        "the",
+        "and",
+        "for",
+        "with",
+        "to",
+        "as",
+        "a",
+        "an",
+        "project",
+        "projects",
+        "program",
+        "programme",
+        "division",
+        "category",
+    }
+    keyword_words = [word for word in words if word.lower() not in stop_words]
+    chosen = keyword_words[:max_words] or words[:max_words]
+    return " ".join(chosen) if chosen else label
+
+
+def add_short_label_column(df: pd.DataFrame, source_column: str, label_column: str) -> pd.DataFrame:
+    data = df.copy()
+    data[label_column] = data[source_column].apply(short_chart_label)
+    duplicates = data.groupby(label_column)[source_column].transform("nunique").gt(1)
+    data.loc[duplicates, label_column] = data.loc[duplicates, source_column]
+    return data
 
 
 def add_multilevel_x_axis_labels(
