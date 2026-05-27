@@ -848,8 +848,26 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     section_gap()
     st.subheader("Division Breakdown for Top 5 Categories")
     st.caption("Top five categories ranked by total financial volume: income + expenses.")
-    for category in top_categories_by_volume(chart_filtered, limit=5):
-        division_chart = build_category_division_breakdown_by_month_chart(chart_filtered, category)
+    default_top_categories = top_categories_by_volume(chart_filtered, limit=5)
+    selected_breakdown_categories = st.multiselect(
+        "Categories to show in division breakdown charts",
+        sorted(chart_filtered["dashboard_category"].dropna().unique().tolist()),
+        default=default_top_categories,
+        key="dashboard-division-breakdown-categories",
+    )
+    if not selected_breakdown_categories:
+        st.info("Select at least one category to show division breakdown charts.")
+    for category in selected_breakdown_categories:
+        category_rows = chart_filtered[chart_filtered["dashboard_category"].eq(category)]
+        division_options = sorted(category_rows["dashboard_division"].dropna().unique().tolist())
+        selected_divisions = st.multiselect(
+            f"Divisions to show — {category}",
+            division_options,
+            default=division_options,
+            key=f"dashboard-division-breakdown-divisions-{normalize_label(category)}",
+        )
+        division_input = category_rows[category_rows["dashboard_division"].isin(selected_divisions)]
+        division_chart = build_category_division_breakdown_by_month_chart(division_input, category)
         if division_chart is None:
             st.info(f"No division data available for this category: {category}.")
         else:
@@ -859,12 +877,36 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     render_custom_division_breakdown(chart_filtered)
 
     section_gap()
-    expense_chart = build_expense_composition_chart(chart_filtered)
-    st.plotly_chart(expense_chart, use_container_width=True)
+    expense_categories = categories_with_amount(chart_filtered, "amount_expense")
+    selected_expense_categories = st.multiselect(
+        "Expense categories to show",
+        expense_categories,
+        default=expense_categories,
+        key="dashboard-expense-composition-categories",
+    )
+    if selected_expense_categories:
+        expense_chart = build_expense_composition_chart(
+            chart_filtered[chart_filtered["dashboard_category"].isin(selected_expense_categories)]
+        )
+        st.plotly_chart(expense_chart, use_container_width=True)
+    else:
+        st.info("Select at least one expense category to show Expense Composition.")
 
     section_gap()
-    revenue_dependency_chart = build_revenue_dependency_chart(chart_filtered)
-    st.plotly_chart(revenue_dependency_chart, use_container_width=True)
+    income_categories = categories_with_amount(chart_filtered, "amount_income")
+    selected_income_categories = st.multiselect(
+        "Income categories to show",
+        income_categories,
+        default=income_categories,
+        key="dashboard-revenue-dependency-categories",
+    )
+    if selected_income_categories:
+        revenue_dependency_chart = build_revenue_dependency_chart(
+            chart_filtered[chart_filtered["dashboard_category"].isin(selected_income_categories)]
+        )
+        st.plotly_chart(revenue_dependency_chart, use_container_width=True)
+    else:
+        st.info("Select at least one income category to show Revenue Dependency.")
 
     section_gap()
     with st.expander("Detailed Category / Transaction Drilldown", expanded=False):
@@ -1153,6 +1195,18 @@ def build_monthly_management_chart(filtered: pd.DataFrame):
 
 
 def render_category_performance_section(filtered: pd.DataFrame) -> None:
+    categories = sorted(filtered["dashboard_category"].dropna().unique().tolist())
+    selected_categories = st.multiselect(
+        "Categories to show in category performance",
+        categories,
+        default=categories,
+        key="dashboard-category-performance-categories",
+    )
+    if not selected_categories:
+        st.info("Select at least one category to show Category Performance.")
+        return
+
+    filtered = filtered[filtered["dashboard_category"].isin(selected_categories)]
     net_chart = build_category_net_result_chart(filtered)
     st.plotly_chart(net_chart, use_container_width=True)
 
@@ -1419,6 +1473,11 @@ def top_categories_by_volume(filtered: pd.DataFrame, limit: int) -> list[str]:
     return summary.sort_values("Total Volume", ascending=False)["label"].head(limit).tolist()
 
 
+def categories_with_amount(filtered: pd.DataFrame, amount_column: str) -> list[str]:
+    grouped = filtered.groupby("dashboard_category", dropna=False)[amount_column].sum()
+    return sorted(grouped[grouped.gt(0)].index.tolist())
+
+
 def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, category: str):
     category_rows = filtered[filtered["dashboard_category"].eq(category)].copy()
     if not has_specific_division_data(category_rows):
@@ -1592,7 +1651,22 @@ def render_custom_division_breakdown(filtered: pd.DataFrame) -> None:
         st.info("Select a category to view division breakdown.")
         return
 
-    chart = build_category_division_breakdown_by_month_chart(filtered, selected_category)
+    category_rows = filtered[filtered["dashboard_category"].eq(selected_category)]
+    division_options = sorted(category_rows["dashboard_division"].dropna().unique().tolist())
+    selected_divisions = st.multiselect(
+        "Divisions to show in custom breakdown",
+        division_options,
+        default=division_options,
+        key=f"dashboard-custom-division-filter-{normalize_label(selected_category)}",
+    )
+    if not selected_divisions:
+        st.info("Select at least one division to show custom breakdown.")
+        return
+
+    chart = build_category_division_breakdown_by_month_chart(
+        category_rows[category_rows["dashboard_division"].isin(selected_divisions)],
+        selected_category,
+    )
     if chart is None:
         st.info(f"No division data available for this category: {selected_category}.")
         return
