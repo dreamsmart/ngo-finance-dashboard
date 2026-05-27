@@ -438,6 +438,63 @@ hr {
 
 def load_custom_css() -> None:
     css = STYLES_FILE.read_text() if STYLES_FILE.exists() else APP_CSS
+    css += """
+.yf-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+@media (max-width: 1100px) {
+    .yf-kpi-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    .block-container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    [data-testid="stPlotlyChart"] {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 0.75rem;
+        border-radius: 18px;
+    }
+
+    [data-testid="stPlotlyChart"] .js-plotly-plot,
+    [data-testid="stPlotlyChart"] .plot-container,
+    [data-testid="stPlotlyChart"] .svg-container {
+        min-width: 760px !important;
+    }
+
+    [data-testid="stPlotlyChart"] .modebar-container {
+        display: none !important;
+    }
+
+    .yf-kpi-card {
+        min-height: auto;
+        padding: 0.9rem;
+    }
+
+    .yf-kpi-card strong {
+        font-size: 1.55rem;
+    }
+
+    .yf-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.65rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .yf-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+"""
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
@@ -986,16 +1043,15 @@ def render_management_kpis(filtered: pd.DataFrame) -> None:
     largest_expense = top_label(summary, "Expenses", "No expenses")
     dependency_value, dependency_hint = grant_donation_dependency(filtered)
 
-    kpis = st.columns(6)
-    kpis[0].markdown(kpi_card("Total Income", format_money(total_income), "positive"), unsafe_allow_html=True)
-    kpis[1].markdown(kpi_card("Total Expenses", format_money(total_expenses), "negative"), unsafe_allow_html=True)
-    kpis[2].markdown(
+    cards = [
+        kpi_card("Total Income", format_money(total_income), "positive"),
+        kpi_card("Total Expenses", format_money(total_expenses), "negative"),
         kpi_card("Net Result", format_money(net_result), "positive" if net_result >= 0 else "negative"),
-        unsafe_allow_html=True,
-    )
-    kpis[3].markdown(kpi_card("Largest Revenue Category", largest_revenue, "neutral"), unsafe_allow_html=True)
-    kpis[4].markdown(kpi_card("Largest Expense Category", largest_expense, "neutral"), unsafe_allow_html=True)
-    kpis[5].markdown(kpi_card("Grant / Donation Dependency", dependency_value, "neutral", dependency_hint), unsafe_allow_html=True)
+        kpi_card("Largest Revenue Category", largest_revenue, "neutral"),
+        kpi_card("Largest Expense Category", largest_expense, "neutral"),
+        kpi_card("Grant / Donation Dependency", dependency_value, "neutral", dependency_hint),
+    ]
+    st.markdown(f"<div class='yf-kpi-grid'>{''.join(cards)}</div>", unsafe_allow_html=True)
 
 
 def kpi_card(label: str, value: str, tone: str, hint: str = "") -> str:
