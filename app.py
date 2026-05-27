@@ -1056,13 +1056,13 @@ def render_management_kpis(filtered: pd.DataFrame) -> None:
 
 def kpi_card(label: str, value: str, tone: str, hint: str = "") -> str:
     hint_markup = f"<em>{html.escape(hint)}</em>" if hint else ""
-    return f"""
-    <div class="yf-kpi-card yf-kpi-{tone}">
-        <span>{html.escape(label)}</span>
-        <strong>{html.escape(value)}</strong>
-        {hint_markup}
-    </div>
-    """
+    return (
+        f'<div class="yf-kpi-card yf-kpi-{tone}">'
+        f"<span>{html.escape(label)}</span>"
+        f"<strong>{html.escape(value)}</strong>"
+        f"{hint_markup}"
+        "</div>"
+    )
 
 
 def top_label(summary: pd.DataFrame, column: str, fallback: str) -> str:
@@ -1271,14 +1271,14 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 22, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 86, "b": 220},
+        margin={"l": 34, "r": 24, "t": 86, "b": 280},
         legend={
             "title": {"text": ""},
             "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.04,
-            "xanchor": "right",
-            "x": 1,
+            "yanchor": "top",
+            "y": -0.48,
+            "xanchor": "center",
+            "x": 0.5,
             "font": {"size": 12},
         },
         annotations=[
@@ -1385,14 +1385,14 @@ def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_lab
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 76, "b": 150},
+        margin={"l": 34, "r": 24, "t": 76, "b": 180},
         legend={
             "title": {"text": ""},
             "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.04,
-            "xanchor": "right",
-            "x": 1,
+            "yanchor": "top",
+            "y": -0.24,
+            "xanchor": "center",
+            "x": 0.5,
             "font": {"size": 12},
         },
     )
@@ -1536,14 +1536,14 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 92, "b": 220},
+        margin={"l": 34, "r": 24, "t": 92, "b": 280},
         legend={
             "title": {"text": "Month"},
             "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.04,
-            "xanchor": "right",
-            "x": 1,
+            "yanchor": "top",
+            "y": -0.48,
+            "xanchor": "center",
+            "x": 0.5,
             "font": {"size": 12},
         },
         annotations=[
@@ -2285,8 +2285,6 @@ def add_multilevel_x_axis_labels(
     group_ranges: list[dict[str, object]],
     group_label_max_chars: int = 18,
 ) -> None:
-    month_angle = -20 if len(month_centers) > 12 else 0
-
     for center, label in group_centers:
         chart.add_annotation(
             text=f"<b>{wrap_axis_label(label, group_label_max_chars)}</b>",
@@ -2307,7 +2305,7 @@ def add_multilevel_x_axis_labels(
             xref="x",
             yref="paper",
             showarrow=False,
-            textangle=month_angle,
+            textangle=0,
             font={"size": 10, "color": "#7b8191"},
         )
 
