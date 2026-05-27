@@ -1208,7 +1208,7 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 22, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 86, "b": 148},
+        margin={"l": 34, "r": 24, "t": 86, "b": 220},
         legend={
             "title": {"text": ""},
             "orientation": "h",
@@ -1236,11 +1236,11 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
         chart.add_annotation(
             text=month_marker["Month"],
             x=month_marker["x"],
-            y=-0.16,
+            y=-0.30,
             xref="x",
             yref="paper",
             showarrow=False,
-            textangle=-90 if len(category_order) > 5 else 0,
+            textangle=-25 if len(category_order) > 5 else 0,
             font={"size": 10, "color": "#6b7280"},
         )
     chart.update_yaxes(
@@ -1250,11 +1250,11 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
         zeroline=False,
     )
     chart.update_xaxes(
-        title="Category",
+        title="",
         tickmode="array",
         tickvals=[center for center, _ in category_centers],
-        ticktext=[category for _, category in category_centers],
-        tickangle=-25 if len(category_order) > 5 else 0,
+        ticktext=[wrap_axis_label(category) for _, category in category_centers],
+        tickangle=-20 if len(category_order) > 5 else 0,
         showgrid=False,
         tickfont={"size": 12},
     )
@@ -1336,7 +1336,7 @@ def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_lab
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 76, "b": 118},
+        margin={"l": 34, "r": 24, "t": 76, "b": 150},
         legend={
             "title": {"text": ""},
             "orientation": "h",
@@ -1354,11 +1354,11 @@ def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_lab
         zerolinecolor="rgba(28, 31, 35, 0.18)",
     )
     chart.update_xaxes(
-        title="Category",
+        title="",
         tickmode="array",
         tickvals=[center for center, _ in category_centers],
-        ticktext=[category for _, category in category_centers],
-        tickangle=-25 if len(category_order) > 5 else 0,
+        ticktext=[wrap_axis_label(category) for _, category in category_centers],
+        tickangle=-20 if len(category_order) > 5 else 0,
         showgrid=False,
         tickfont={"size": 12},
     )
@@ -1480,7 +1480,7 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 92, "b": 148},
+        margin={"l": 34, "r": 24, "t": 92, "b": 220},
         legend={
             "title": {"text": "Month"},
             "orientation": "h",
@@ -1507,11 +1507,11 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
         chart.add_annotation(
             text=month_marker["Month"],
             x=month_marker["x"],
-            y=-0.16,
+            y=-0.30,
             xref="x",
             yref="paper",
             showarrow=False,
-            textangle=-90 if len(division_order) > 5 else 0,
+            textangle=-25 if len(division_order) > 5 else 0,
             font={"size": 10, "color": "#6b7280"},
         )
     chart.update_yaxes(
@@ -1521,11 +1521,11 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
         zerolinecolor="rgba(28, 31, 35, 0.18)",
     )
     chart.update_xaxes(
-        title="Division",
+        title="",
         tickmode="array",
         tickvals=[center for center, _ in division_centers],
-        ticktext=[division for _, division in division_centers],
-        tickangle=-25 if len(division_order) > 5 else 0,
+        ticktext=[wrap_axis_label(division) for _, division in division_centers],
+        tickangle=-20 if len(division_order) > 5 else 0,
         showgrid=False,
         tickfont={"size": 12},
     )
@@ -2211,6 +2211,23 @@ def normalize_label(value: str) -> str:
     if normalized.endswith("s"):
         normalized = normalized[:-1]
     return normalized
+
+
+def wrap_axis_label(value: str, max_chars: int = 18) -> str:
+    words = str(value).split()
+    if not words:
+        return ""
+
+    lines = []
+    current = words[0]
+    for word in words[1:]:
+        if len(current) + len(word) + 1 <= max_chars:
+            current = f"{current} {word}"
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return "<br>".join(lines)
 
 
 def aggregate_amount(df: pd.DataFrame, label_column: str, amount_column: str, transaction_type: str | None) -> pd.DataFrame:
