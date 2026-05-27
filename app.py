@@ -782,7 +782,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     section_gap()
     sort_by = st.selectbox(
         "Sort category performance by",
-        ["Total Volume", "Income", "Expenses", "Net Result"],
+        ["Income", "Expenses"],
         key="dashboard-category-sort",
     )
     category_chart = build_category_performance_chart(filtered, sort_by)
@@ -1071,30 +1071,28 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
     sort_map = {
         "Income": "Income",
         "Expenses": "Expenses",
-        "Net Result": "Net Result",
-        "Total Volume": "Total Volume",
     }
-    sort_column = sort_map.get(sort_by, "Net Result")
-    summary = summary.sort_values(sort_column, ascending=True)
+    sort_column = sort_map.get(sort_by, "Income")
+    summary = summary.sort_values(sort_column, ascending=False)
 
     chart_data = summary.melt(
         id_vars="label",
-        value_vars=["Income", "Expenses", "Net Result"],
+        value_vars=["Income", "Expenses"],
         var_name="Metric",
         value_name="Amount",
     )
     chart = px.bar(
         chart_data,
-        x="Amount",
-        y="label",
+        x="label",
+        y="Amount",
         color="Metric",
         barmode="group",
-        orientation="h",
-        title="Category Performance — Income, Expenses, Net Result",
+        title="Category Performance — Income vs Expenses",
         labels={"label": "Category"},
-        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91", "Net Result": "#171717"},
+        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91"},
     )
-    chart.update_xaxes(tickformat=",.2f")
+    chart.update_yaxes(tickformat=",.2f")
+    chart.update_xaxes(tickangle=-35)
     style_chart(chart)
     return chart
 
