@@ -799,6 +799,9 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
             st.plotly_chart(division_chart, use_container_width=True)
 
     section_gap()
+    render_custom_division_breakdown(filtered)
+
+    section_gap()
     expense_cols = st.columns([1.15, 0.85])
     with expense_cols[0]:
         expense_chart = build_expense_composition_chart(filtered, "dashboard_category", "Expense Composition by Category")
@@ -1110,7 +1113,7 @@ def build_category_division_breakdown_chart(filtered: pd.DataFrame, category: st
     summary = financial_summary(category_rows, "dashboard_division").sort_values("Total Volume", ascending=True).tail(12)
     chart_data = summary.melt(
         id_vars="label",
-        value_vars=["Income", "Expenses", "Net Result"],
+        value_vars=["Income", "Expenses"],
         var_name="Metric",
         value_name="Amount",
     )
@@ -1123,11 +1126,30 @@ def build_category_division_breakdown_chart(filtered: pd.DataFrame, category: st
         orientation="h",
         title=f"Division Breakdown — {category}",
         labels={"label": "Division"},
-        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91", "Net Result": "#171717"},
+        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91"},
     )
     chart.update_xaxes(tickformat=",.2f")
     style_chart(chart)
     return chart
+
+
+def render_custom_division_breakdown(filtered: pd.DataFrame) -> None:
+    st.subheader("Custom Division Breakdown")
+    categories = sorted(filtered["dashboard_category"].dropna().unique().tolist())
+    selected_category = st.selectbox(
+        "Choose category",
+        ["Select a category"] + categories,
+        key="dashboard-custom-division-category",
+    )
+    if selected_category == "Select a category":
+        st.info("Select a category to view division breakdown.")
+        return
+
+    chart = build_category_division_breakdown_chart(filtered, selected_category)
+    if chart is None:
+        st.info(f"No division data available for this category: {selected_category}.")
+        return
+    st.plotly_chart(chart, use_container_width=True)
 
 
 def has_specific_division_data(rows: pd.DataFrame) -> bool:
