@@ -957,16 +957,16 @@ def filter_by_month_view(filtered: pd.DataFrame) -> pd.DataFrame:
     mode_cols = st.columns([1, 2])
     month_mode = mode_cols[0].radio(
         "Month view",
-        ["All months", "Specific month"],
+        ["All Months", "Specific Month"],
         horizontal=True,
         key="dashboard-month-view-mode",
     )
-    if month_mode == "All months":
+    if month_mode == "All Months":
         mode_cols[1].caption("All charts below compare months inside the same chart.")
         return filtered
 
     selected_month = mode_cols[1].selectbox(
-        "Select month",
+        "Select Month",
         month_options,
         key="dashboard-month-view-selected",
     )
@@ -1131,6 +1131,7 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
 
     positioned_rows = []
     category_centers = []
+    month_centers = []
     x_cursor = 0.0
 
     for category in category_order:
@@ -1144,6 +1145,7 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
             expense = float(row["Expenses"].sum()) if not row.empty else 0.0
             income_x = x_cursor
             expense_x = x_cursor + bar_width + metric_gap
+            month_center = (income_x + expense_x) / 2
 
             positioned_rows.extend(
                 [
@@ -1166,6 +1168,7 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
                 ]
             )
             category_positions.extend([income_x, expense_x])
+            month_centers.append({"x": month_center, "Month": month})
             x_cursor += (bar_width * 2) + metric_gap + month_gap
 
         if category_positions:
@@ -1212,7 +1215,7 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 22, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 92, "b": 118},
+        margin={"l": 34, "r": 24, "t": 96, "b": 148},
         legend={
             "title": {"text": "Month"},
             "orientation": "h",
@@ -1235,6 +1238,17 @@ def build_category_performance_chart(filtered: pd.DataFrame, sort_by: str):
             }
         ],
     )
+    for month_marker in month_centers:
+        chart.add_annotation(
+            text=month_marker["Month"],
+            x=month_marker["x"],
+            y=-0.16,
+            xref="x",
+            yref="paper",
+            showarrow=False,
+            textangle=-90 if len(category_order) > 5 else 0,
+            font={"size": 10, "color": "#6b7280"},
+        )
     chart.update_yaxes(
         title="Amount",
         tickformat=",.2f",
@@ -1258,25 +1272,13 @@ def top_categories_by_volume(filtered: pd.DataFrame, limit: int) -> list[str]:
     return summary.sort_values("Total Volume", ascending=False)["label"].head(limit).tolist()
 
 
-def select_breakdown_month(filtered: pd.DataFrame, category: str, key_suffix: str) -> str:
-    category_rows = filtered[filtered["dashboard_category"].eq(category)]
-    month_options = ordered_month_labels(category_rows)
-    latest_month = month_options[-1] if month_options else "No date"
-    return st.selectbox(
-        f"Month for {category}",
-        month_options,
-        index=month_options.index(latest_month),
-        key=f"dashboard-breakdown-month-{key_suffix}",
-    )
-
-
 def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, category: str):
     category_rows = filtered[filtered["dashboard_category"].eq(category)].copy()
     if not has_specific_division_data(category_rows):
         return None
 
     months = ordered_month_labels(category_rows)
-    summary = financial_summary(category_rows, "dashboard_division").sort_values("Total Volume", ascending=True).tail(12)
+    summary = financial_summary(category_rows, "dashboard_division").sort_values("Total Volume", ascending=False).head(12)
     division_order = summary["label"].tolist()
     chart_data = (
         category_rows.groupby(["dashboard_division", "dashboard_month_label"], dropna=False)[
@@ -1289,14 +1291,15 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
 
     income_palette = ["#14532d", "#2f7d45", "#68a878", "#a7d0ad", "#d5ead7"]
     expense_palette = ["#9f2f45", "#c84d62", "#e18491", "#efb3bc", "#f7d8dd"]
-    bar_width = 0.28
+    bar_width = 0.30
     metric_gap = 0.08
-    month_gap = 0.18
-    division_gap = 0.72
+    month_gap = 0.26
+    division_gap = 0.95
 
     positioned_rows = []
     division_centers = []
-    y_cursor = 0.0
+    month_centers = []
+    x_cursor = 0.0
 
     for division in division_order:
         division_positions = []
@@ -1307,13 +1310,14 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
             ]
             income = float(row["Income"].sum()) if not row.empty else 0.0
             expense = float(row["Expenses"].sum()) if not row.empty else 0.0
-            income_y = y_cursor
-            expense_y = y_cursor + bar_width + metric_gap
+            income_x = x_cursor
+            expense_x = x_cursor + bar_width + metric_gap
+            month_center = (income_x + expense_x) / 2
 
             positioned_rows.extend(
                 [
                     {
-                        "y": income_y,
+                        "x": income_x,
                         "Amount": income,
                         "Division": division,
                         "Month": month,
@@ -1321,7 +1325,7 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
                         "Color": income_palette[month_index % len(income_palette)],
                     },
                     {
-                        "y": expense_y,
+                        "x": expense_x,
                         "Amount": expense,
                         "Division": division,
                         "Month": month,
@@ -1330,27 +1334,27 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
                     },
                 ]
             )
-            division_positions.extend([income_y, expense_y])
-            y_cursor += (bar_width * 2) + metric_gap + month_gap
+            division_positions.extend([income_x, expense_x])
+            month_centers.append({"x": month_center, "Month": month})
+            x_cursor += (bar_width * 2) + metric_gap + month_gap
 
         if division_positions:
             division_centers.append((sum(division_positions) / len(division_positions), division))
-        y_cursor += division_gap
+        x_cursor += division_gap
 
     chart = go.Figure()
     for row in positioned_rows:
         chart.add_bar(
-            x=[row["Amount"]],
-            y=[row["y"]],
+            x=[row["x"]],
+            y=[row["Amount"]],
             width=bar_width,
-            orientation="h",
             marker_color=row["Color"],
             showlegend=False,
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
                 "Month: %{customdata[1]}<br>"
                 "Metric: %{customdata[2]}<br>"
-                "Amount: %{x:,.2f}<extra></extra>"
+                "Amount: %{y:,.2f}<extra></extra>"
             ),
             customdata=[[row["Division"], row["Month"], row["Metric"]]],
         )
@@ -1373,12 +1377,12 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
         title=f"Division Breakdown — {category}",
         barmode="overlay",
         bargap=0,
-        height=max(460, 68 * max(len(division_order), 4)),
+        height=560,
         plot_bgcolor="#ffffff",
         paper_bgcolor="#ffffff",
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 88, "b": 58},
+        margin={"l": 34, "r": 24, "t": 92, "b": 148},
         legend={
             "title": {"text": "Month"},
             "orientation": "h",
@@ -1401,62 +1405,32 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
             }
         ],
     )
-    chart.update_xaxes(
+    for month_marker in month_centers:
+        chart.add_annotation(
+            text=month_marker["Month"],
+            x=month_marker["x"],
+            y=-0.16,
+            xref="x",
+            yref="paper",
+            showarrow=False,
+            textangle=-90 if len(division_order) > 5 else 0,
+            font={"size": 10, "color": "#6b7280"},
+        )
+    chart.update_yaxes(
         title="Amount",
         tickformat=",.2f",
         gridcolor="rgba(28, 31, 35, 0.08)",
         zerolinecolor="rgba(28, 31, 35, 0.18)",
     )
-    chart.update_yaxes(
+    chart.update_xaxes(
         title="Division",
         tickmode="array",
         tickvals=[center for center, _ in division_centers],
         ticktext=[division for _, division in division_centers],
+        tickangle=-25 if len(division_order) > 5 else 0,
         showgrid=False,
-        autorange="reversed",
         tickfont={"size": 12},
     )
-    return chart
-
-
-def build_category_division_breakdown_chart(filtered: pd.DataFrame, category: str, month_label: str):
-    category_rows = filtered[filtered["dashboard_category"].eq(category)].copy()
-    category_rows = category_rows[category_rows["dashboard_month_label"].eq(month_label)]
-    if not has_specific_division_data(category_rows):
-        return None
-
-    summary = financial_summary(category_rows, "dashboard_division").sort_values("Total Volume", ascending=True).tail(12)
-    division_order = summary["label"].tolist()
-    chart_data = (
-        category_rows.groupby("dashboard_division", dropna=False)[["amount_income", "amount_expense"]]
-        .sum()
-        .reset_index()
-        .rename(columns={"amount_income": "Income", "amount_expense": "Expenses"})
-        .melt(
-            id_vars="dashboard_division",
-            value_vars=["Income", "Expenses"],
-            var_name="Metric",
-            value_name="Amount",
-        )
-    )
-    chart = px.bar(
-        chart_data,
-        x="Amount",
-        y="dashboard_division",
-        color="Metric",
-        barmode="group",
-        orientation="h",
-        title=f"Division Breakdown — {category} ({month_label})",
-        labels={"dashboard_division": "Division"},
-        category_orders={
-            "dashboard_division": division_order,
-            "Metric": ["Income", "Expenses"],
-        },
-        color_discrete_map={"Income": "#0a8527", "Expenses": "#ff6f91"},
-        hover_data={"Amount": ":,.2f"},
-    )
-    chart.update_xaxes(tickformat=",.2f")
-    style_chart(chart)
     return chart
 
 
@@ -1472,12 +1446,7 @@ def render_custom_division_breakdown(filtered: pd.DataFrame) -> None:
         st.info("Select a category to view division breakdown.")
         return
 
-    selected_month = select_breakdown_month(
-        filtered,
-        selected_category,
-        f"custom-{normalize_label(selected_category)}",
-    )
-    chart = build_category_division_breakdown_chart(filtered, selected_category, selected_month)
+    chart = build_category_division_breakdown_by_month_chart(filtered, selected_category)
     if chart is None:
         st.info(f"No division data available for this category: {selected_category}.")
         return
