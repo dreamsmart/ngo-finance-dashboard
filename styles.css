@@ -169,6 +169,48 @@ div[data-testid="stMetricValue"] {
     font-weight: 900;
 }
 
+.yf-kpi-card {
+    min-height: 116px;
+    padding: 1.05rem 1.05rem 0.95rem;
+    border: 1px solid var(--yf-border);
+    border-radius: 22px;
+    background: var(--yf-card);
+    box-shadow: 0 14px 30px rgba(25, 36, 22, 0.07);
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.yf-kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(10, 133, 39, 0.26);
+    box-shadow: 0 18px 38px rgba(10, 133, 39, 0.13);
+}
+
+.yf-kpi-card span {
+    display: block;
+    min-height: 2.2rem;
+    color: var(--yf-muted);
+    font-size: 0.88rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.yf-kpi-card strong {
+    display: block;
+    margin-top: 0.75rem;
+    color: var(--yf-ink);
+    font-size: clamp(1.35rem, 2.4vw, 2rem);
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.yf-kpi-positive strong {
+    color: var(--yf-green);
+}
+
+.yf-kpi-negative strong {
+    color: #d83a3a;
+}
+
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #ffffff 0%, var(--yf-cream) 100%);
     border-right: 1px solid rgba(10, 133, 39, 0.12);
