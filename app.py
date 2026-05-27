@@ -1138,6 +1138,7 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
 
     positioned_rows = []
     category_centers = []
+    category_ranges = []
     month_centers = []
     x_cursor = 0.0
 
@@ -1164,6 +1165,12 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
 
         if category_positions:
             category_centers.append((sum(category_positions) / len(category_positions), category))
+            category_ranges.append(
+                {
+                    "start": min(category_positions) - (bar_width / 2),
+                    "end": max(category_positions) + (bar_width / 2),
+                }
+            )
         x_cursor += category_gap
 
     chart = go.Figure()
@@ -1232,17 +1239,7 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
         ],
     )
     chart.add_hline(y=0, line_color="rgba(28, 31, 35, 0.45)", line_width=1.4)
-    for month_marker in month_centers:
-        chart.add_annotation(
-            text=month_marker["Month"],
-            x=month_marker["x"],
-            y=-0.30,
-            xref="x",
-            yref="paper",
-            showarrow=False,
-            textangle=-25 if len(category_order) > 5 else 0,
-            font={"size": 10, "color": "#6b7280"},
-        )
+    add_multilevel_x_axis_labels(chart, category_centers, month_centers, category_ranges)
     chart.update_yaxes(
         title="Net Result",
         tickformat=",.2f",
@@ -1251,12 +1248,8 @@ def build_category_net_result_chart(filtered: pd.DataFrame):
     )
     chart.update_xaxes(
         title="",
-        tickmode="array",
-        tickvals=[center for center, _ in category_centers],
-        ticktext=[wrap_axis_label(category) for _, category in category_centers],
-        tickangle=-20 if len(category_order) > 5 else 0,
+        showticklabels=False,
         showgrid=False,
-        tickfont={"size": 12},
     )
     return chart
 
@@ -1396,6 +1389,7 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
 
     positioned_rows = []
     division_centers = []
+    division_ranges = []
     month_centers = []
     x_cursor = 0.0
 
@@ -1438,6 +1432,12 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
 
         if division_positions:
             division_centers.append((sum(division_positions) / len(division_positions), division))
+            division_ranges.append(
+                {
+                    "start": min(division_positions) - (bar_width / 2),
+                    "end": max(division_positions) + (bar_width / 2),
+                }
+            )
         x_cursor += division_gap
 
     chart = go.Figure()
@@ -1503,17 +1503,13 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
             }
         ],
     )
-    for month_marker in month_centers:
-        chart.add_annotation(
-            text=month_marker["Month"],
-            x=month_marker["x"],
-            y=-0.30,
-            xref="x",
-            yref="paper",
-            showarrow=False,
-            textangle=-25 if len(division_order) > 5 else 0,
-            font={"size": 10, "color": "#6b7280"},
-        )
+    add_multilevel_x_axis_labels(
+        chart,
+        division_centers,
+        month_centers,
+        division_ranges,
+        group_label_max_chars=16,
+    )
     chart.update_yaxes(
         title="Amount",
         tickformat=",.2f",
@@ -1522,12 +1518,8 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
     )
     chart.update_xaxes(
         title="",
-        tickmode="array",
-        tickvals=[center for center, _ in division_centers],
-        ticktext=[wrap_axis_label(division) for _, division in division_centers],
-        tickangle=-20 if len(division_order) > 5 else 0,
+        showticklabels=False,
         showgrid=False,
-        tickfont={"size": 12},
     )
     return chart
 
@@ -2228,6 +2220,53 @@ def wrap_axis_label(value: str, max_chars: int = 18) -> str:
             current = word
     lines.append(current)
     return "<br>".join(lines)
+
+
+def add_multilevel_x_axis_labels(
+    chart: go.Figure,
+    group_centers: list[tuple[float, str]],
+    month_centers: list[dict[str, object]],
+    group_ranges: list[dict[str, object]],
+    group_label_max_chars: int = 18,
+) -> None:
+    month_angle = -20 if len(month_centers) > 12 else 0
+
+    for center, label in group_centers:
+        chart.add_annotation(
+            text=f"<b>{wrap_axis_label(label, group_label_max_chars)}</b>",
+            x=center,
+            y=-0.13,
+            xref="x",
+            yref="paper",
+            showarrow=False,
+            align="center",
+            font={"size": 11, "color": "#5f6675"},
+        )
+
+    for month_marker in month_centers:
+        chart.add_annotation(
+            text=str(month_marker["Month"]),
+            x=float(month_marker["x"]),
+            y=-0.29,
+            xref="x",
+            yref="paper",
+            showarrow=False,
+            textangle=month_angle,
+            font={"size": 10, "color": "#7b8191"},
+        )
+
+    for left, right in zip(group_ranges, group_ranges[1:]):
+        boundary = (float(left["end"]) + float(right["start"])) / 2
+        chart.add_shape(
+            type="line",
+            x0=boundary,
+            x1=boundary,
+            y0=0,
+            y1=1,
+            xref="x",
+            yref="paper",
+            line={"color": "rgba(28, 31, 35, 0.12)", "width": 1},
+        )
 
 
 def aggregate_amount(df: pd.DataFrame, label_column: str, amount_column: str, transaction_type: str | None) -> pd.DataFrame:
