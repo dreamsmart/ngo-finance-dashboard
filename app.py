@@ -957,7 +957,7 @@ def prepare_dashboard_data(transactions: pd.DataFrame) -> pd.DataFrame:
     data = transactions.copy()
     data["date"] = pd.to_datetime(data["date"], errors="coerce")
     data["dashboard_month_sort"] = data["date"].dt.strftime("%Y-%m").fillna("No date")
-    data["dashboard_month_label"] = data["date"].dt.strftime("%b %Y").fillna("No date")
+    data["dashboard_month_label"] = data["date"].dt.strftime("%b").fillna("No date")
     data["amount_income"] = pd.to_numeric(data["amount_income"], errors="coerce").fillna(0)
     data["amount_expense"] = pd.to_numeric(data["amount_expense"], errors="coerce").fillna(0)
     data["signed_amount"] = pd.to_numeric(data["signed_amount"], errors="coerce").fillna(0)
