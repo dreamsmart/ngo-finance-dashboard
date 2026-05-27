@@ -802,15 +802,14 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     render_custom_division_breakdown(filtered)
 
     section_gap()
-    expense_cols = st.columns([1.15, 0.85])
-    with expense_cols[0]:
-        expense_chart = build_expense_composition_chart(filtered, "dashboard_category", "Expense Composition by Category")
-        st.plotly_chart(expense_chart, use_container_width=True)
-    with expense_cols[1]:
-        grant_dependency = build_income_dependency_table(filtered)
-        st.subheader("Revenue Dependency")
-        st.caption("Income structure by category. Use this to check grants/donations reliance.")
-        st.dataframe(grant_dependency, use_container_width=True, hide_index=True, height=390)
+    expense_chart = build_expense_composition_chart(filtered, "dashboard_category", "Expense Composition by Category")
+    st.plotly_chart(expense_chart, use_container_width=True)
+
+    section_gap()
+    grant_dependency = build_income_dependency_table(filtered)
+    st.subheader("Revenue Dependency")
+    st.caption("Income structure by category. Use this to check grants/donations reliance.")
+    st.dataframe(grant_dependency, use_container_width=True, hide_index=True, height=390)
 
     section_gap()
     with st.expander("Detailed Category / Transaction Drilldown", expanded=False):
