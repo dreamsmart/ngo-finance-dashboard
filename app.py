@@ -442,13 +442,13 @@ def load_custom_css() -> None:
     css += """
 .yf-kpi-grid {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.85rem;
 }
 
 @media (max-width: 1100px) {
     .yf-kpi-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
@@ -838,47 +838,48 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     st.plotly_chart(monthly_chart, use_container_width=True)
 
     section_gap()
-    chart_filtered = filter_by_month_view(filtered)
-    if chart_filtered.empty:
-        st.info("No transactions match the selected month view.")
-        return
+    yf_chart = build_yf_main_extra_chart(filtered)
+    st.plotly_chart(yf_chart, use_container_width=True)
 
     section_gap()
-    render_category_performance_section(chart_filtered)
+    core_chart = build_core_operations_chart(filtered)
+    if core_chart is None:
+        st.info("No core operations data available for the current filters.")
+    else:
+        st.plotly_chart(core_chart, use_container_width=True)
 
     section_gap()
-    st.subheader("Division Breakdown for Top 5 Categories")
-    st.caption("Top five categories ranked by total financial volume: income + expenses.")
-    default_top_categories = top_categories_by_volume(chart_filtered, limit=5)
-    selected_breakdown_categories = st.multiselect(
-        "Categories to show in division breakdown charts",
-        sorted(chart_filtered["dashboard_category"].dropna().unique().tolist()),
-        default=default_top_categories,
-        key="dashboard-division-breakdown-categories",
+    render_focus_breakdown(
+        filtered,
+        title="Membership Breakdown",
+        key_prefix="membership",
+        row_filter=membership_rows,
+        label_assigner=assign_membership_label,
     )
-    if not selected_breakdown_categories:
-        st.info("Select at least one category to show division breakdown charts.")
-    for category in selected_breakdown_categories:
-        category_rows = chart_filtered[chart_filtered["dashboard_category"].eq(category)]
-        division_options = sorted(category_rows["dashboard_division"].dropna().unique().tolist())
-        selected_divisions = st.multiselect(
-            f"Divisions to show — {category}",
-            division_options,
-            default=division_options,
-            key=f"dashboard-division-breakdown-divisions-{normalize_label(category)}",
-        )
-        division_input = category_rows[category_rows["dashboard_division"].isin(selected_divisions)]
-        division_chart = build_category_division_breakdown_by_month_chart(division_input, category)
-        if division_chart is None:
-            st.info(f"No division data available for this category: {category}.")
-        else:
-            st.plotly_chart(division_chart, use_container_width=True)
 
     section_gap()
-    render_custom_division_breakdown(chart_filtered)
+    render_focus_breakdown(
+        filtered,
+        title="Services Breakdown",
+        key_prefix="services",
+        row_filter=services_rows,
+        label_assigner=assign_service_label,
+    )
 
     section_gap()
-    expense_categories = categories_with_amount(chart_filtered, "amount_expense")
+    render_focus_breakdown(
+        filtered,
+        title="Erasmus+ Breakdown",
+        key_prefix="erasmus",
+        row_filter=erasmus_rows,
+        label_assigner=assign_erasmus_label,
+    )
+
+    section_gap()
+    render_custom_division_breakdown(filtered)
+
+    section_gap()
+    expense_categories = categories_with_amount(filtered, "amount_expense")
     selected_expense_categories = st.multiselect(
         "Expense categories to show",
         expense_categories,
@@ -887,14 +888,14 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     )
     if selected_expense_categories:
         expense_chart = build_expense_composition_chart(
-            chart_filtered[chart_filtered["dashboard_category"].isin(selected_expense_categories)]
+            filtered[filtered["dashboard_category"].isin(selected_expense_categories)]
         )
         st.plotly_chart(expense_chart, use_container_width=True)
     else:
         st.info("Select at least one expense category to show Expense Composition.")
 
     section_gap()
-    income_categories = categories_with_amount(chart_filtered, "amount_income")
+    income_categories = categories_with_amount(filtered, "amount_income")
     selected_income_categories = st.multiselect(
         "Income categories to show",
         income_categories,
@@ -903,7 +904,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     )
     if selected_income_categories:
         revenue_dependency_chart = build_revenue_dependency_chart(
-            chart_filtered[chart_filtered["dashboard_category"].isin(selected_income_categories)]
+            filtered[filtered["dashboard_category"].isin(selected_income_categories)]
         )
         st.plotly_chart(revenue_dependency_chart, use_container_width=True)
     else:
@@ -916,7 +917,7 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
             ["All categories"] + sorted(filtered["dashboard_category"].dropna().unique().tolist()),
             key="dashboard-category-drilldown",
         )
-        drilldown = chart_filtered if selected_category == "All categories" else chart_filtered[chart_filtered["dashboard_category"] == selected_category]
+        drilldown = filtered if selected_category == "All categories" else filtered[filtered["dashboard_category"] == selected_category]
         render_drilldown_summary(drilldown)
         st.dataframe(
             format_transactions(drilldown, TRANSACTION_COLUMNS),
@@ -1045,28 +1046,6 @@ def filter_dashboard_data(transactions: pd.DataFrame) -> pd.DataFrame:
     return filtered
 
 
-def filter_by_month_view(filtered: pd.DataFrame) -> pd.DataFrame:
-    st.subheader("Month View")
-    month_options = ordered_month_labels(filtered)
-    mode_cols = st.columns([1, 2])
-    month_mode = mode_cols[0].radio(
-        "Month view",
-        ["All Months", "Specific Month"],
-        horizontal=True,
-        key="dashboard-month-view-mode",
-    )
-    if month_mode == "All Months":
-        mode_cols[1].caption("All charts below compare months inside the same chart.")
-        return filtered
-
-    selected_month = mode_cols[1].selectbox(
-        "Select Month",
-        month_options,
-        key="dashboard-month-view-selected",
-    )
-    return filtered[filtered["dashboard_month_label"].eq(selected_month)]
-
-
 def ordered_month_labels(df: pd.DataFrame) -> list[str]:
     months = (
         df[["dashboard_month_sort", "dashboard_month_label"]]
@@ -1084,6 +1063,8 @@ def render_management_kpis(filtered: pd.DataFrame) -> None:
     net_result = total_income - total_expenses
     largest_revenue = top_label(summary, "Income", "No income")
     largest_expense = top_label(summary, "Expenses", "No expenses")
+    largest_growth = largest_monthly_change(filtered, "amount_income", "No income growth")
+    largest_cost_increase = largest_monthly_change(filtered, "amount_expense", "No cost increase")
     dependency_value, dependency_hint = grant_donation_dependency(filtered)
 
     cards = [
@@ -1092,6 +1073,8 @@ def render_management_kpis(filtered: pd.DataFrame) -> None:
         kpi_card("Net Result", format_money(net_result), "positive" if net_result >= 0 else "negative"),
         kpi_card("Largest Revenue Category", largest_revenue, "neutral"),
         kpi_card("Largest Expense Category", largest_expense, "neutral"),
+        kpi_card("Largest Growing Category", largest_growth, "positive"),
+        kpi_card("Largest Cost Increase", largest_cost_increase, "negative"),
         kpi_card("Grant / Donation Dependency", dependency_value, "neutral", dependency_hint),
     ]
     st.markdown(f"<div class='yf-kpi-grid'>{''.join(cards)}</div>", unsafe_allow_html=True)
@@ -1114,6 +1097,31 @@ def top_label(summary: pd.DataFrame, column: str, fallback: str) -> str:
         return fallback
     row = rows.iloc[0]
     return f"{row['label']} ({format_money(row[column])})"
+
+
+def largest_monthly_change(filtered: pd.DataFrame, amount_column: str, fallback: str) -> str:
+    months = (
+        filtered[["dashboard_month_sort", "dashboard_month_label"]]
+        .drop_duplicates()
+        .sort_values("dashboard_month_sort")
+    )
+    if len(months) < 2:
+        return "N/A"
+
+    previous_month = months.iloc[-2]["dashboard_month_label"]
+    latest_month = months.iloc[-1]["dashboard_month_label"]
+    monthly = (
+        filtered[filtered["dashboard_month_label"].isin([previous_month, latest_month])]
+        .groupby(["dashboard_category", "dashboard_month_label"], dropna=False)[amount_column]
+        .sum()
+        .unstack(fill_value=0)
+    )
+    monthly["change"] = monthly.get(latest_month, 0) - monthly.get(previous_month, 0)
+    positive = monthly[monthly["change"].gt(0)].sort_values("change", ascending=False)
+    if positive.empty:
+        return fallback
+    category = positive.index[0]
+    return f"{category} (+{format_money(float(positive.iloc[0]['change']))})"
 
 
 def grant_donation_dependency(filtered: pd.DataFrame) -> tuple[str, str]:
@@ -1157,7 +1165,6 @@ def build_monthly_management_chart(filtered: pd.DataFrame):
         .reset_index()
         .sort_values("dashboard_month_sort")
     )
-    monthly["Net Result"] = monthly["amount_income"] - monthly["amount_expense"]
     x_values = monthly["dashboard_month_label"].fillna("No date")
 
     chart = go.Figure()
@@ -1177,16 +1184,9 @@ def build_monthly_management_chart(filtered: pd.DataFrame):
         mode="lines+markers",
         line={"color": "#ff6f91", "width": 3, "dash": "dot"},
     )
-    chart.add_scatter(
-        name="Net Result",
-        x=x_values,
-        y=monthly["Net Result"],
-        mode="lines+markers",
-        line={"color": "#171717", "width": 4},
-    )
     chart.update_layout(
         barmode="group",
-        title="Monthly Income, Expenses, and Net Result",
+        title="Monthly Income vs Expenses",
         xaxis_title="Month",
         yaxis_title="Amount",
     )
@@ -1195,208 +1195,135 @@ def build_monthly_management_chart(filtered: pd.DataFrame):
     return chart
 
 
-def render_category_performance_section(filtered: pd.DataFrame) -> None:
-    categories = sorted(filtered["dashboard_category"].dropna().unique().tolist())
-    selected_categories = st.multiselect(
-        "Categories to show in category performance",
-        categories,
-        default=categories,
-        key="dashboard-category-performance-categories",
+def build_yf_main_extra_chart(filtered: pd.DataFrame):
+    chart_rows = filtered.copy()
+    chart_rows["dashboard_yf_area"] = chart_rows.apply(assign_yf_area, axis=1)
+    return build_income_expense_grouped_chart(
+        chart_rows,
+        "dashboard_yf_area",
+        "YF Main vs YF Extra Overview",
+        group_title="Area",
     )
-    if not selected_categories:
-        st.info("Select at least one category to show Category Performance.")
+
+
+def build_core_operations_chart(filtered: pd.DataFrame):
+    chart_rows = filtered.copy()
+    chart_rows["dashboard_core_operation"] = chart_rows["dashboard_category"].apply(map_core_operation)
+    chart_rows = chart_rows[chart_rows["dashboard_core_operation"].notna()]
+    if chart_rows.empty:
+        return None
+    return build_income_expense_grouped_chart(
+        chart_rows,
+        "dashboard_core_operation",
+        "Core Operations Overview",
+        group_title="Core operation",
+    )
+
+
+def render_focus_breakdown(
+    filtered: pd.DataFrame,
+    title: str,
+    key_prefix: str,
+    row_filter: Any,
+    label_assigner: Any,
+) -> None:
+    st.subheader(title)
+    rows = row_filter(filtered).copy()
+    if rows.empty:
+        st.info(f"No data available for {title}.")
         return
 
-    filtered = filtered[filtered["dashboard_category"].isin(selected_categories)]
-    net_chart = build_category_net_result_chart(filtered)
-    st.plotly_chart(net_chart, use_container_width=True)
+    rows["dashboard_focus_label"] = rows.apply(label_assigner, axis=1)
+    rows = rows[rows["dashboard_focus_label"].notna()]
+    if rows.empty:
+        st.info(f"No matching breakdown items found for {title}.")
+        return
 
+    rows = filter_section_month_view(rows, key_prefix)
+    if rows.empty:
+        st.info(f"No data available for the selected month in {title}.")
+        return
+
+    chart = build_income_expense_grouped_chart(
+        rows,
+        "dashboard_focus_label",
+        title,
+        group_title="Item",
+    )
+    st.plotly_chart(chart, use_container_width=True)
+
+
+def filter_section_month_view(filtered: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
     month_options = ordered_month_labels(filtered)
-    latest_month = month_options[-1] if month_options else "No date"
-    selected_month = st.selectbox(
-        "Select month for detailed income/expense view",
+    if not month_options:
+        return filtered
+    latest_month = month_options[-1]
+    controls = st.columns([1, 2])
+    mode = controls[0].radio(
+        "Month view",
+        ["Specific Month", "All Months"],
+        horizontal=True,
+        key=f"{key_prefix}-month-view-mode",
+    )
+    if mode == "All Months":
+        controls[1].caption("Showing all months.")
+        return filtered
+    selected_month = controls[1].selectbox(
+        "Select Month",
         month_options,
         index=month_options.index(latest_month),
-        key="dashboard-category-detail-month",
+        key=f"{key_prefix}-month-view-selected",
     )
-    detail_chart = build_category_income_expense_detail_chart(filtered, selected_month)
-    st.plotly_chart(detail_chart, use_container_width=True)
+    return filtered[filtered["dashboard_month_label"].eq(selected_month)]
 
 
-def build_category_net_result_chart(filtered: pd.DataFrame):
+def build_income_expense_grouped_chart(
+    filtered: pd.DataFrame,
+    group_column: str,
+    title: str,
+    group_title: str,
+):
     months = ordered_month_labels(filtered)
-
+    summary = financial_summary(filtered, group_column).sort_values("Total Volume", ascending=False)
+    group_order = summary["label"].tolist()
     chart_data = (
-        filtered.groupby(["dashboard_category", "dashboard_month_sort", "dashboard_month_label"], dropna=False)[
-            ["amount_income", "amount_expense"]
-        ]
-        .sum()
-        .reset_index()
-    )
-    chart_data = chart_data.rename(columns={"amount_income": "Income", "amount_expense": "Expenses"})
-    chart_data["Net Result"] = chart_data["Income"] - chart_data["Expenses"]
-
-    latest_month = months[-1] if months else "No date"
-    latest_summary = chart_data[chart_data["dashboard_month_label"].eq(latest_month)].copy()
-    latest_summary["sort_value"] = latest_summary["Net Result"].abs()
-    category_order = latest_summary.sort_values("sort_value", ascending=False)["dashboard_category"].tolist()
-    missing_categories = [category for category in chart_data["dashboard_category"].unique() if category not in category_order]
-    category_order.extend(missing_categories)
-
-    bar_width = 0.34
-    month_gap = 0.18
-    category_gap = 1.0
-
-    positioned_rows = []
-    category_centers = []
-    category_ranges = []
-    month_centers = []
-    x_cursor = 0.0
-
-    for category in category_order:
-        category_positions = []
-        for month_index, month in enumerate(months):
-            row = chart_data[
-                chart_data["dashboard_category"].eq(category)
-                & chart_data["dashboard_month_label"].eq(month)
-            ]
-            net_result = float(row["Net Result"].sum()) if not row.empty else 0.0
-            positioned_rows.append(
-                {
-                    "x": x_cursor,
-                    "Net Result": net_result,
-                    "Category": category,
-                    "Month": month,
-                    "Color": "#1f7a3d" if net_result >= 0 else "#c84d62",
-                }
-            )
-            category_positions.append(x_cursor)
-            month_centers.append({"x": x_cursor, "Month": month})
-            x_cursor += bar_width + month_gap
-
-        if category_positions:
-            category_centers.append((sum(category_positions) / len(category_positions), category))
-            category_ranges.append(
-                {
-                    "start": min(category_positions) - (bar_width / 2),
-                    "end": max(category_positions) + (bar_width / 2),
-                }
-            )
-        x_cursor += category_gap
-
-    chart = go.Figure()
-    for row in positioned_rows:
-        chart.add_bar(
-            x=[row["x"]],
-            y=[row["Net Result"]],
-            width=bar_width,
-            marker_color=row["Color"],
-            showlegend=False,
-            hovertemplate=(
-                "<b>%{customdata[0]}</b><br>"
-                "Month: %{customdata[1]}<br>"
-                "Net Result: %{y:,.2f}<extra></extra>"
-            ),
-            customdata=[[row["Category"], row["Month"]]],
-        )
-
-    chart.add_scatter(
-        x=[None],
-        y=[None],
-        mode="markers",
-        name="Positive net result",
-        marker={"color": "#1f7a3d", "size": 11, "symbol": "square"},
-        showlegend=True,
-    )
-    chart.add_scatter(
-        x=[None],
-        y=[None],
-        mode="markers",
-        name="Negative net result",
-        marker={"color": "#c84d62", "size": 11, "symbol": "square"},
-        showlegend=True,
-    )
-
-    chart.update_layout(
-        title="Category Performance — Net Result by Category",
-        barmode="overlay",
-        bargap=0,
-        height=520,
-        plot_bgcolor="#ffffff",
-        paper_bgcolor="#ffffff",
-        font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
-        title_font={"size": 22, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 86, "b": 320},
-        legend={
-            "title": {"text": ""},
-            "orientation": "h",
-            "yanchor": "top",
-            "y": -0.58,
-            "xanchor": "center",
-            "x": 0.5,
-            "font": {"size": 12},
-        },
-        annotations=[
-            {
-                "text": "Net Result = Income - Expenses. Month labels sit below each bar.",
-                "xref": "paper",
-                "yref": "paper",
-                "x": 0,
-                "y": 1.09,
-                "showarrow": False,
-                "align": "left",
-                "font": {"size": 12, "color": "#60646c"},
-            }
-        ],
-    )
-    chart.add_hline(y=0, line_color="rgba(28, 31, 35, 0.45)", line_width=1.4)
-    add_multilevel_x_axis_labels(chart, category_centers, month_centers, category_ranges)
-    chart.update_yaxes(
-        title="Net Result",
-        tickformat=",.2f",
-        gridcolor="rgba(28, 31, 35, 0.08)",
-        zeroline=False,
-    )
-    chart.update_xaxes(
-        title="",
-        showticklabels=False,
-        showgrid=False,
-    )
-    return chart
-
-
-def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_label: str):
-    month_rows = filtered[filtered["dashboard_month_label"].eq(month_label)].copy()
-    summary = financial_summary(month_rows, "dashboard_category").sort_values("Total Volume", ascending=False)
-    category_order = summary["label"].tolist()
-    chart_data = (
-        month_rows.groupby("dashboard_category", dropna=False)[["amount_income", "amount_expense"]]
+        filtered.groupby([group_column, "dashboard_month_label"], dropna=False)[["amount_income", "amount_expense"]]
         .sum()
         .reset_index()
         .rename(columns={"amount_income": "Income", "amount_expense": "Expenses"})
     )
 
-    bar_width = 0.34
-    metric_gap = 0.10
-    category_gap = 0.85
+    bar_width = 0.32
+    metric_gap = 0.08
+    month_gap = 0.26
+    group_gap = 1.0
     positioned_rows = []
-    category_centers = []
+    group_centers = []
+    group_ranges = []
+    month_centers = []
     x_cursor = 0.0
 
-    for category in category_order:
-        row = chart_data[chart_data["dashboard_category"].eq(category)]
-        income = float(row["Income"].sum()) if not row.empty else 0.0
-        expenses = float(row["Expenses"].sum()) if not row.empty else 0.0
-        income_x = x_cursor
-        expense_x = x_cursor + bar_width + metric_gap
-        positioned_rows.extend(
-            [
-                {"x": income_x, "Amount": income, "Category": category, "Metric": "Income", "Color": "#1f7a3d"},
-                {"x": expense_x, "Amount": expenses, "Category": category, "Metric": "Expenses", "Color": "#c84d62"},
-            ]
-        )
-        category_centers.append(((income_x + expense_x) / 2, category))
-        x_cursor += (bar_width * 2) + metric_gap + category_gap
+    for group in group_order:
+        group_positions = []
+        for month in months:
+            row = chart_data[chart_data[group_column].eq(group) & chart_data["dashboard_month_label"].eq(month)]
+            income = float(row["Income"].sum()) if not row.empty else 0.0
+            expenses = float(row["Expenses"].sum()) if not row.empty else 0.0
+            income_x = x_cursor
+            expense_x = x_cursor + bar_width + metric_gap
+            positioned_rows.extend(
+                [
+                    {"x": income_x, "Amount": income, "Group": group, "Month": month, "Metric": "Income", "Color": "#1f7a3d"},
+                    {"x": expense_x, "Amount": expenses, "Group": group, "Month": month, "Metric": "Expenses", "Color": "#c84d62"},
+                ]
+            )
+            group_positions.extend([income_x, expense_x])
+            month_centers.append({"x": (income_x + expense_x) / 2, "Month": month})
+            x_cursor += (bar_width * 2) + metric_gap + month_gap
+        if group_positions:
+            group_centers.append((sum(group_positions) / len(group_positions), group))
+            group_ranges.append({"start": min(group_positions) - (bar_width / 2), "end": max(group_positions) + (bar_width / 2)})
+        x_cursor += group_gap
 
     chart = go.Figure()
     for row in positioned_rows:
@@ -1405,16 +1332,60 @@ def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_lab
             y=[row["Amount"]],
             width=bar_width,
             marker_color=row["Color"],
-            name=row["Metric"],
             showlegend=False,
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                "Metric: %{customdata[1]}<br>"
+                "Month: %{customdata[1]}<br>"
+                "Metric: %{customdata[2]}<br>"
                 "Amount: %{y:,.2f}<extra></extra>"
             ),
-            customdata=[[row["Category"], row["Metric"]]],
+            customdata=[[row["Group"], row["Month"], row["Metric"]]],
         )
+    add_metric_legend(chart)
+    chart.update_layout(
+        title=title,
+        barmode="overlay",
+        bargap=0,
+        height=max(520, 420 + (len(group_order) * 18)),
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
+        title_font={"size": 20, "color": "#151515"},
+        margin={"l": 34, "r": 24, "t": 86, "b": 300},
+        legend={
+            "title": {"text": ""},
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.52,
+            "xanchor": "center",
+            "x": 0.5,
+            "font": {"size": 12},
+        },
+        annotations=[
+            {
+                "text": f"{group_title} shown above month labels.",
+                "xref": "paper",
+                "yref": "paper",
+                "x": 0,
+                "y": 1.08,
+                "showarrow": False,
+                "align": "left",
+                "font": {"size": 12, "color": "#60646c"},
+            }
+        ],
+    )
+    add_multilevel_x_axis_labels(chart, group_centers, month_centers, group_ranges, group_label_max_chars=16)
+    chart.update_yaxes(
+        title="Amount",
+        tickformat=",.2f",
+        gridcolor="rgba(28, 31, 35, 0.08)",
+        zerolinecolor="rgba(28, 31, 35, 0.18)",
+    )
+    chart.update_xaxes(title="", showticklabels=False, showgrid=False)
+    return chart
 
+
+def add_metric_legend(chart: go.Figure) -> None:
     chart.add_scatter(
         x=[None],
         y=[None],
@@ -1431,47 +1402,97 @@ def build_category_income_expense_detail_chart(filtered: pd.DataFrame, month_lab
         marker={"color": "#c84d62", "size": 11, "symbol": "square"},
         showlegend=True,
     )
-    chart.update_layout(
-        title=f"Category Income vs Expenses — {month_label}",
-        barmode="overlay",
-        bargap=0,
-        height=500,
-        plot_bgcolor="#ffffff",
-        paper_bgcolor="#ffffff",
-        font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
-        title_font={"size": 20, "color": "#151515"},
-        margin={"l": 34, "r": 24, "t": 76, "b": 180},
-        legend={
-            "title": {"text": ""},
-            "orientation": "h",
-            "yanchor": "top",
-            "y": -0.24,
-            "xanchor": "center",
-            "x": 0.5,
-            "font": {"size": 12},
-        },
-    )
-    chart.update_yaxes(
-        title="Amount",
-        tickformat=",.2f",
-        gridcolor="rgba(28, 31, 35, 0.08)",
-        zerolinecolor="rgba(28, 31, 35, 0.18)",
-    )
-    chart.update_xaxes(
-        title="",
-        tickmode="array",
-        tickvals=[center for center, _ in category_centers],
-        ticktext=[wrap_axis_label(category, max_chars=14) for _, category in category_centers],
-        tickangle=-20 if len(category_order) > 5 else 0,
-        showgrid=False,
-        tickfont={"size": 12},
-    )
-    return chart
 
 
-def top_categories_by_volume(filtered: pd.DataFrame, limit: int) -> list[str]:
-    summary = financial_summary(filtered, "dashboard_category")
-    return summary.sort_values("Total Volume", ascending=False)["label"].head(limit).tolist()
+def assign_yf_area(row: pd.Series) -> str:
+    text = dimension_text(row)
+    if "yf extra" in text:
+        return "YF Extra"
+    if "yf main" in text:
+        return "YF Main"
+    extra_keywords = ("erasmus", "project", "travel", "exchange", "x-change", "nva", "esf")
+    return "YF Extra" if any(keyword in text for keyword in extra_keywords) else "YF Main"
+
+
+def map_core_operation(value: str) -> str | None:
+    normalized = normalize_label(value)
+    if "membership" in normalized:
+        return "Membership"
+    if "service" in normalized:
+        return "Services"
+    if "donation" in normalized:
+        return "Donations"
+    if "operational" in normalized or "salar" in normalized:
+        return "Operational Expenses"
+    return None
+
+
+def membership_rows(filtered: pd.DataFrame) -> pd.DataFrame:
+    return filtered[filtered.apply(lambda row: "membership" in dimension_text(row) or assign_membership_label(row) is not None, axis=1)]
+
+
+def services_rows(filtered: pd.DataFrame) -> pd.DataFrame:
+    return filtered[filtered.apply(lambda row: assign_service_label(row) is not None, axis=1)]
+
+
+def erasmus_rows(filtered: pd.DataFrame) -> pd.DataFrame:
+    return filtered[filtered.apply(lambda row: "erasmus" in dimension_text(row), axis=1)]
+
+
+def assign_membership_label(row: pd.Series) -> str | None:
+    text = dimension_text(row)
+    membership_items = {
+        "Forever Young": ("forever young",),
+        "YF Kids": ("yf kids", "kids"),
+        "YF Teens": ("yf teens", "teens"),
+        "YF Youth": ("yf youth", "youth"),
+    }
+    return first_matching_label(text, membership_items)
+
+
+def assign_service_label(row: pd.Series) -> str | None:
+    text = dimension_text(row)
+    service_items = {
+        "English": ("english",),
+        "German": ("german",),
+        "Latvian": ("latvian",),
+        "Academic Drawing": ("academic drawing", "drawing"),
+        "Workshops": ("workshop", "workshops"),
+    }
+    explicit_label = first_matching_label(text, service_items)
+    if explicit_label:
+        return explicit_label
+    return "Other services" if "service" in text else None
+
+
+def assign_erasmus_label(row: pd.Series) -> str | None:
+    division = str(row.get("dashboard_division", "")).strip()
+    subdivision = str(row.get("dashboard_subdivision", "")).strip()
+    if division and normalize_label(division) not in {"unknown", "unknown division", "unclassified"}:
+        return division
+    if subdivision and normalize_label(subdivision) not in {"unknown", "no subdivision", "unclassified"}:
+        return subdivision
+    return "Erasmus+"
+
+
+def first_matching_label(text: str, mapping: dict[str, tuple[str, ...]]) -> str | None:
+    for label, keywords in mapping.items():
+        if any(keyword in text for keyword in keywords):
+            return label
+    return None
+
+
+def dimension_text(row: pd.Series) -> str:
+    values = [
+        row.get("dashboard_category", ""),
+        row.get("dashboard_division", ""),
+        row.get("dashboard_subdivision", ""),
+        row.get("category", ""),
+        row.get("project_name", ""),
+        row.get("description", ""),
+    ]
+    text = " ".join(str(value).lower() for value in values if pd.notna(value))
+    return re.sub(r"\s+", " ", text)
 
 
 def categories_with_amount(filtered: pd.DataFrame, amount_column: str) -> list[str]:
