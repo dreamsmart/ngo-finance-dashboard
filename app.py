@@ -836,17 +836,25 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     section_gap()
     monthly_chart = build_monthly_management_chart(filtered)
     st.plotly_chart(monthly_chart, use_container_width=True)
+    render_chart_source_check("Monthly Income vs Expenses", filtered.assign(chart_group="Monthly total"), "chart_group")
 
     section_gap()
-    yf_chart = build_yf_main_extra_chart(filtered)
+    yf_rows = filtered.copy()
+    yf_rows["dashboard_yf_area"] = yf_rows.apply(assign_yf_area, axis=1)
+    yf_chart = build_yf_main_extra_chart(yf_rows)
     st.plotly_chart(yf_chart, use_container_width=True)
+    render_chart_source_check("YF Main vs YF Extra Overview", yf_rows, "dashboard_yf_area")
 
     section_gap()
-    core_chart = build_core_operations_chart(filtered)
+    core_rows = filtered.copy()
+    core_rows["dashboard_core_operation"] = core_rows["dashboard_category"].apply(map_core_operation)
+    core_rows = core_rows[core_rows["dashboard_core_operation"].notna()]
+    core_chart = build_core_operations_chart(core_rows)
     if core_chart is None:
         st.info("No core operations data available for the current filters.")
     else:
         st.plotly_chart(core_chart, use_container_width=True)
+        render_chart_source_check("Core Operations Overview", core_rows, "dashboard_core_operation")
 
     section_gap()
     render_focus_breakdown(
@@ -887,10 +895,25 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         key="dashboard-expense-composition-categories",
     )
     if selected_expense_categories:
-        expense_chart = build_expense_composition_chart(
-            filtered[filtered["dashboard_category"].isin(selected_expense_categories)]
+        expense_rows = filtered[filtered["dashboard_category"].isin(selected_expense_categories)]
+        expense_other_options = other_item_options(expense_rows, "dashboard_category", top_n=5)
+        selected_expense_separate = st.multiselect(
+            "Expense items to show separately",
+            expense_other_options,
+            default=[],
+            key="dashboard-expense-other-items",
         )
+        expense_rows = apply_other_grouping(
+            expense_rows,
+            "dashboard_category",
+            "dashboard_category_display",
+            top_n=5,
+            selected_separate=selected_expense_separate,
+        )
+        expense_chart = build_expense_composition_chart(expense_rows)
         st.plotly_chart(expense_chart, use_container_width=True)
+        render_other_items_table("Expense Composition", expense_rows, "dashboard_category_display")
+        render_chart_source_check("Expense Composition", expense_rows, "dashboard_category_display")
     else:
         st.info("Select at least one expense category to show Expense Composition.")
 
@@ -903,10 +926,25 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
         key="dashboard-revenue-dependency-categories",
     )
     if selected_income_categories:
-        revenue_dependency_chart = build_revenue_dependency_chart(
-            filtered[filtered["dashboard_category"].isin(selected_income_categories)]
+        income_rows = filtered[filtered["dashboard_category"].isin(selected_income_categories)]
+        income_other_options = other_item_options(income_rows, "dashboard_category", top_n=5)
+        selected_income_separate = st.multiselect(
+            "Income items to show separately",
+            income_other_options,
+            default=[],
+            key="dashboard-income-other-items",
         )
+        income_rows = apply_other_grouping(
+            income_rows,
+            "dashboard_category",
+            "dashboard_category_display",
+            top_n=5,
+            selected_separate=selected_income_separate,
+        )
+        revenue_dependency_chart = build_revenue_dependency_chart(income_rows)
         st.plotly_chart(revenue_dependency_chart, use_container_width=True)
+        render_other_items_table("Revenue Dependency", income_rows, "dashboard_category_display")
+        render_chart_source_check("Revenue Dependency", income_rows, "dashboard_category_display")
     else:
         st.info("Select at least one income category to show Revenue Dependency.")
 
@@ -964,17 +1002,23 @@ def prepare_dashboard_data(transactions: pd.DataFrame) -> pd.DataFrame:
     data["amount_expense"] = pd.to_numeric(data["amount_expense"], errors="coerce").fillna(0)
     data["signed_amount"] = pd.to_numeric(data["signed_amount"], errors="coerce").fillna(0)
     data["dashboard_category"] = clean_dimension_series(data.get("Category", data.get("category")), "Unclassified")
+    data["original_category"] = data["dashboard_category"]
     if "category" in data:
         data["dashboard_category"] = data["dashboard_category"].where(
             data["dashboard_category"].ne("Unclassified"),
             clean_dimension_series(data["category"], "Unclassified"),
         )
+        data["original_category"] = data["dashboard_category"]
     data["dashboard_division"] = clean_dimension_series(data.get("Division", data.get("project_name")), "Unknown division")
+    data["original_division"] = data["dashboard_division"]
     if "project_name" in data:
         data["dashboard_division"] = data["dashboard_division"].where(
             data["dashboard_division"].ne("Unknown division"),
             clean_dimension_series(data["project_name"], "Unknown division"),
         )
+        data["original_division"] = data["dashboard_division"]
+    data["original_sub"] = clean_dimension_series(data.get("Sub", pd.Series("", index=data.index)), "")
+    data["original_subdivision"] = clean_dimension_series(data.get("Subdivision", data.get("Sub", pd.Series("", index=data.index))), "")
     data["dashboard_subdivision"] = clean_dimension_series(data.get("Sub", pd.Series("", index=data.index)), "")
     data["dashboard_subdivision"] = data["dashboard_subdivision"].where(
         data["dashboard_subdivision"].ne(""),
@@ -1244,13 +1288,33 @@ def render_focus_breakdown(
         st.info(f"No data available for the selected month in {title}.")
         return
 
+    display_column = "dashboard_focus_label"
+    if key_prefix in {"services", "erasmus"}:
+        other_options = other_item_options(rows, "dashboard_focus_label", top_n=5)
+        selected_separate = st.multiselect(
+            "Items to show separately",
+            other_options,
+            default=[],
+            key=f"{key_prefix}-items-show-separately",
+        )
+        rows = apply_other_grouping(
+            rows,
+            "dashboard_focus_label",
+            "dashboard_focus_display",
+            top_n=5,
+            selected_separate=selected_separate,
+        )
+        display_column = "dashboard_focus_display"
+
     chart = build_income_expense_grouped_chart(
         rows,
-        "dashboard_focus_label",
+        display_column,
         title,
         group_title="Item",
     )
     st.plotly_chart(chart, use_container_width=True)
+    render_other_items_table(title, rows, display_column)
+    render_chart_source_check(title, rows, display_column)
 
 
 def filter_section_month_view(filtered: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
@@ -1500,6 +1564,133 @@ def categories_with_amount(filtered: pd.DataFrame, amount_column: str) -> list[s
     return sorted(grouped[grouped.gt(0)].index.tolist())
 
 
+def apply_other_grouping(
+    rows: pd.DataFrame,
+    item_column: str,
+    display_column: str,
+    amount_columns: tuple[str, str] = ("amount_income", "amount_expense"),
+    top_n: int = 5,
+    selected_separate: list[str] | None = None,
+) -> pd.DataFrame:
+    selected_separate = selected_separate or []
+    data = rows.copy()
+    volume = (
+        data.groupby(item_column, dropna=False)[list(amount_columns)]
+        .sum()
+        .abs()
+        .sum(axis=1)
+        .sort_values(ascending=False)
+    )
+    default_items = set(volume.head(top_n).index.tolist())
+    visible_items = default_items | set(selected_separate)
+    data[display_column] = data[item_column].where(data[item_column].isin(visible_items), "Other")
+    return data
+
+
+def other_item_options(rows: pd.DataFrame, item_column: str, top_n: int = 5) -> list[str]:
+    volume = (
+        rows.groupby(item_column, dropna=False)[["amount_income", "amount_expense"]]
+        .sum()
+        .abs()
+        .sum(axis=1)
+        .sort_values(ascending=False)
+    )
+    return volume.iloc[top_n:].index.tolist()
+
+
+def render_other_items_table(title: str, rows: pd.DataFrame, display_column: str) -> None:
+    if display_column not in rows or "Other" not in set(rows[display_column].dropna()):
+        return
+    other_rows = rows[rows[display_column].eq("Other")].copy()
+    if other_rows.empty:
+        return
+    table = source_trace_table(other_rows)
+    with st.expander(f"{title} — Items included in Other", expanded=False):
+        st.dataframe(table, use_container_width=True, hide_index=True)
+
+
+def render_chart_source_check(title: str, rows: pd.DataFrame, group_column: str) -> None:
+    if rows.empty:
+        with st.expander(f"{title} — Source Check", expanded=False):
+            st.info("No source rows for this chart.")
+        return
+
+    table = validation_group_table(rows, group_column)
+    chart_income = float(table["Income"].sum())
+    chart_expenses = float(table["Expenses"].sum())
+    source_income = float(rows["amount_income"].sum())
+    source_expenses = float(rows["amount_expense"].sum())
+    diff_income = chart_income - source_income
+    diff_expenses = chart_expenses - source_expenses
+    if abs(diff_income) > 0.01 or abs(diff_expenses) > 0.01:
+        st.warning(
+            "Chart totals do not match source data. "
+            f"Income difference: {format_money(diff_income)}; "
+            f"Expenses difference: {format_money(diff_expenses)}."
+        )
+
+    with st.expander(f"{title} — Source Check", expanded=False):
+        summary = pd.DataFrame(
+            [
+                {
+                    "Metric": "Income",
+                    "Chart total": chart_income,
+                    "Source filtered total": source_income,
+                    "Difference": diff_income,
+                },
+                {
+                    "Metric": "Expenses",
+                    "Chart total": chart_expenses,
+                    "Source filtered total": source_expenses,
+                    "Difference": diff_expenses,
+                },
+            ]
+        )
+        st.dataframe(summary, use_container_width=True, hide_index=True)
+        st.dataframe(table, use_container_width=True, hide_index=True)
+
+
+def validation_group_table(rows: pd.DataFrame, group_column: str) -> pd.DataFrame:
+    data = rows.copy()
+    data["Group shown on chart"] = data[group_column] if group_column in data else "All"
+    return (
+        data.groupby(["dashboard_month_label", "Group shown on chart"], dropna=False)
+        .agg(
+            Income=("amount_income", "sum"),
+            Expenses=("amount_expense", "sum"),
+            **{"Number of transactions": ("amount_income", "size"), "Source rows count": ("amount_income", "size")},
+        )
+        .reset_index()
+        .rename(columns={"dashboard_month_label": "Month"})
+    )
+
+
+def source_trace_table(rows: pd.DataFrame) -> pd.DataFrame:
+    source_cols = ["original_category", "original_division", "original_sub", "original_subdivision"]
+    data = rows.copy()
+    for column in source_cols:
+        if column not in data:
+            data[column] = ""
+    return (
+        data.groupby(["dashboard_month_label", *source_cols], dropna=False)
+        .agg(
+            Income=("amount_income", "sum"),
+            Expenses=("amount_expense", "sum"),
+            **{"Number of transactions": ("amount_income", "size")},
+        )
+        .reset_index()
+        .rename(
+            columns={
+                "dashboard_month_label": "Month",
+                "original_category": "Original Category",
+                "original_division": "Original Division",
+                "original_sub": "Original Sub",
+                "original_subdivision": "Original Subdivision",
+            }
+        )
+    )
+
+
 def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, category: str):
     category_rows = filtered[filtered["dashboard_category"].eq(category)].copy()
     if not has_specific_division_data(category_rows):
@@ -1693,6 +1884,7 @@ def render_custom_division_breakdown(filtered: pd.DataFrame) -> None:
         st.info(f"No division data available for this category: {selected_category}.")
         return
     st.plotly_chart(chart, use_container_width=True)
+    render_chart_source_check("Custom Division Breakdown", category_rows[category_rows["dashboard_division"].isin(selected_divisions)], "dashboard_division")
 
 
 def has_specific_division_data(rows: pd.DataFrame) -> bool:
@@ -1703,12 +1895,15 @@ def has_specific_division_data(rows: pd.DataFrame) -> bool:
 
 
 def build_expense_composition_chart(filtered: pd.DataFrame):
+    category_column = "dashboard_category_display" if "dashboard_category_display" in filtered else "dashboard_category"
     expenses = (
-        filtered.groupby(["dashboard_month_sort", "dashboard_month_label", "dashboard_category"], dropna=False)["amount_expense"]
+        filtered.groupby(["dashboard_month_sort", "dashboard_month_label", category_column], dropna=False)["amount_expense"]
         .sum()
         .reset_index(name="Expenses")
+        .rename(columns={category_column: "dashboard_category"})
     )
-    expenses = collapse_to_top_categories(expenses, "dashboard_category", "Expenses", top_n=5)
+    if "dashboard_category_display" not in filtered:
+        expenses = collapse_to_top_categories(expenses, "dashboard_category", "Expenses", top_n=5)
     if expenses.empty:
         expenses = pd.DataFrame({
             "dashboard_month_sort": ["No date"],
@@ -1733,12 +1928,15 @@ def build_expense_composition_chart(filtered: pd.DataFrame):
 
 
 def build_revenue_dependency_chart(filtered: pd.DataFrame):
+    category_column = "dashboard_category_display" if "dashboard_category_display" in filtered else "dashboard_category"
     income = (
-        filtered.groupby(["dashboard_month_sort", "dashboard_month_label", "dashboard_category"], dropna=False)["amount_income"]
+        filtered.groupby(["dashboard_month_sort", "dashboard_month_label", category_column], dropna=False)["amount_income"]
         .sum()
         .reset_index(name="Income")
+        .rename(columns={category_column: "dashboard_category"})
     )
-    income = collapse_to_top_categories(income, "dashboard_category", "Income", top_n=5)
+    if "dashboard_category_display" not in filtered:
+        income = collapse_to_top_categories(income, "dashboard_category", "Income", top_n=5)
     if income.empty:
         income = pd.DataFrame({
             "dashboard_month_sort": ["No date"],
