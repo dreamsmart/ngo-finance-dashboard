@@ -495,6 +495,74 @@ def load_custom_css() -> None:
         grid-template-columns: 1fr;
     }
 }
+
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stMarkdownContainer"],
+[data-testid="stWidgetLabel"],
+[data-testid="stMetricLabel"],
+[data-testid="stMetricValue"] {
+    color: #111827 !important;
+}
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stCaptionContainer"],
+label,
+p,
+span {
+    color: #374151;
+}
+
+.yf-kpi-card span,
+div[data-testid="stMetricLabel"] p {
+    color: #374151 !important;
+}
+
+.yf-kpi-card strong,
+div[data-testid="stMetricValue"] {
+    color: #111827 !important;
+}
+
+.yf-kpi-positive strong {
+    color: #0a8527 !important;
+}
+
+.yf-kpi-negative strong {
+    color: #d83a3a !important;
+}
+
+div[data-baseweb="select"] > div {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid rgba(17, 24, 39, 0.18) !important;
+}
+
+div[data-baseweb="select"] span,
+div[data-baseweb="select"] input,
+div[data-baseweb="popover"] span,
+div[data-baseweb="popover"] li {
+    color: #111827 !important;
+}
+
+[data-baseweb="tag"] {
+    background-color: #ef4444 !important;
+    color: #ffffff !important;
+}
+
+[data-baseweb="tag"] span {
+    color: #ffffff !important;
+}
+
+[data-testid="stSidebar"] * {
+    color: #111827;
+}
+
+[data-testid="stSidebar"] div[data-testid="stMetricLabel"] p {
+    color: #374151 !important;
+}
+
+[data-testid="stSidebar"] div[data-testid="stMetricValue"] {
+    color: #111827 !important;
+}
 """
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
@@ -968,28 +1036,31 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
 def style_chart(chart) -> None:
     chart.update_layout(
         colorway=["#0a8527", "#ff6f91", "#55b6ff", "#ffd84d", "#171717"],
-        font={"family": "Inter, Arial, sans-serif", "color": "#171717"},
-        title={"font": {"size": 22, "color": "#171717"}, "x": 0.02},
+        font={"family": "Inter, Arial, sans-serif", "color": "#111827", "size": 13},
+        title={"font": {"size": 22, "color": "#111827"}, "x": 0.02},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0)",
         legend={
             "orientation": "h",
             "yanchor": "bottom",
-            "y": 1.02,
+            "y": 1.08,
             "xanchor": "right",
             "x": 1,
+            "font": {"color": "#374151", "size": 12},
         },
-        margin={"l": 24, "r": 24, "t": 72, "b": 36},
+        margin={"l": 64, "r": 32, "t": 88, "b": 72},
     )
     chart.update_xaxes(
-        gridcolor="rgba(23,23,23,0.08)",
-        zerolinecolor="rgba(23,23,23,0.12)",
-        title_font={"color": "#6b6b5f"},
+        gridcolor="rgba(17,24,39,0.08)",
+        zerolinecolor="rgba(17,24,39,0.18)",
+        title_font={"color": "#374151", "size": 13},
+        tickfont={"color": "#4B5563", "size": 12},
     )
     chart.update_yaxes(
-        gridcolor="rgba(23,23,23,0.08)",
-        zerolinecolor="rgba(23,23,23,0.12)",
-        title_font={"color": "#6b6b5f"},
+        gridcolor="rgba(17,24,39,0.08)",
+        zerolinecolor="rgba(17,24,39,0.18)",
+        title_font={"color": "#374151", "size": 13},
+        tickfont={"color": "#4B5563", "size": 12},
     )
 
 
