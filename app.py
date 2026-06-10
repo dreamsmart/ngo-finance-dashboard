@@ -1079,6 +1079,19 @@ def readable_legend(y: float = -0.18, title: str = "") -> dict[str, Any]:
     }
 
 
+def first_available_series(data: pd.DataFrame, candidates: list[str], fallback: str = "") -> pd.Series:
+    """
+    Return the first existing non-empty source column from candidates.
+    If none exist, return a fallback series with the same index.
+    """
+    for column in candidates:
+        if column in data.columns:
+            series = data[column].fillna("").astype(str).str.strip()
+            if series.ne("").any():
+                return series
+    return pd.Series(fallback, index=data.index)
+
+
 def prepare_dashboard_data(transactions: pd.DataFrame) -> pd.DataFrame:
     data = transactions.copy()
     data["date"] = pd.to_datetime(data["date"], errors="coerce")
