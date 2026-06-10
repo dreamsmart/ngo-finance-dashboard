@@ -933,15 +933,15 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     render_chart_source_check("Monthly Income vs Expenses", filtered.assign(chart_group="Monthly total"), "chart_group")
 
     section_gap()
-    yf_rows = filtered.copy()
-    yf_rows["dashboard_yf_area"] = yf_rows.apply(assign_yf_area, axis=1)
+    yf_rows = filtered[filtered["dashboard_category"].isin(["YF Main", "YF Extra"])].copy()
+    yf_rows["dashboard_yf_area"] = yf_rows["dashboard_category"]
     yf_chart = build_yf_main_extra_chart(yf_rows)
     st.plotly_chart(yf_chart, use_container_width=True)
     render_chart_source_check("YF Main vs YF Extra Overview", yf_rows, "dashboard_yf_area")
 
     section_gap()
     core_rows = filtered.copy()
-    core_rows["dashboard_core_operation"] = core_rows["dashboard_category"].apply(map_core_operation)
+    core_rows["dashboard_core_operation"] = core_rows["dashboard_division"].apply(map_core_operation)
     core_rows = core_rows[core_rows["dashboard_core_operation"].notna()]
     core_chart = build_core_operations_chart(core_rows)
     if core_chart is None:
@@ -990,24 +990,9 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     )
     if selected_expense_categories:
         expense_rows = filtered[filtered["dashboard_category"].isin(selected_expense_categories)]
-        expense_other_options = other_item_options(expense_rows, "dashboard_category", top_n=5)
-        selected_expense_separate = st.multiselect(
-            "Expense items to show separately",
-            expense_other_options,
-            default=[],
-            key="dashboard-expense-other-items",
-        )
-        expense_rows = apply_other_grouping(
-            expense_rows,
-            "dashboard_category",
-            "dashboard_category_display",
-            top_n=5,
-            selected_separate=selected_expense_separate,
-        )
         expense_chart = build_expense_composition_chart(expense_rows)
         st.plotly_chart(expense_chart, use_container_width=True)
-        render_other_items_table("Expense Composition", expense_rows, "dashboard_category_display")
-        render_chart_source_check("Expense Composition", expense_rows, "dashboard_category_display")
+        render_chart_source_check("Expense Composition", expense_rows, "dashboard_category")
     else:
         st.info("Select at least one expense category to show Expense Composition.")
 
@@ -1021,24 +1006,9 @@ def render_dashboard(transactions: pd.DataFrame) -> None:
     )
     if selected_income_categories:
         income_rows = filtered[filtered["dashboard_category"].isin(selected_income_categories)]
-        income_other_options = other_item_options(income_rows, "dashboard_category", top_n=5)
-        selected_income_separate = st.multiselect(
-            "Income items to show separately",
-            income_other_options,
-            default=[],
-            key="dashboard-income-other-items",
-        )
-        income_rows = apply_other_grouping(
-            income_rows,
-            "dashboard_category",
-            "dashboard_category_display",
-            top_n=5,
-            selected_separate=selected_income_separate,
-        )
         revenue_dependency_chart = build_revenue_dependency_chart(income_rows)
         st.plotly_chart(revenue_dependency_chart, use_container_width=True)
-        render_other_items_table("Revenue Dependency", income_rows, "dashboard_category_display")
-        render_chart_source_check("Revenue Dependency", income_rows, "dashboard_category_display")
+        render_chart_source_check("Revenue Dependency", income_rows, "dashboard_category")
     else:
         st.info("Select at least one income category to show Revenue Dependency.")
 
@@ -1134,7 +1104,10 @@ def prepare_dashboard_data(transactions: pd.DataFrame) -> pd.DataFrame:
         )
         data["original_division"] = data["dashboard_division"]
     data["original_sub"] = clean_dimension_series(data.get("Sub", pd.Series("", index=data.index)), "")
-    data["original_subdivision"] = clean_dimension_series(data.get("Subdivision", data.get("Sub", pd.Series("", index=data.index))), "")
+    data["original_subdivision"] = clean_dimension_series(
+        first_available_series(data, ["Subdivision", "Subdiv", "Sub"]),
+        "",
+    )
     data["dashboard_subdivision"] = clean_dimension_series(data.get("Sub", pd.Series("", index=data.index)), "")
     data["dashboard_subdivision"] = data["dashboard_subdivision"].where(
         data["dashboard_subdivision"].ne(""),
@@ -1356,8 +1329,8 @@ def build_monthly_management_chart(filtered: pd.DataFrame):
 
 
 def build_yf_main_extra_chart(filtered: pd.DataFrame):
-    chart_rows = filtered.copy()
-    chart_rows["dashboard_yf_area"] = chart_rows.apply(assign_yf_area, axis=1)
+    chart_rows = filtered[filtered["dashboard_category"].isin(["YF Main", "YF Extra"])].copy()
+    chart_rows["dashboard_yf_area"] = chart_rows["dashboard_category"]
     return build_income_expense_grouped_chart(
         chart_rows,
         "dashboard_yf_area",
@@ -1368,7 +1341,7 @@ def build_yf_main_extra_chart(filtered: pd.DataFrame):
 
 def build_core_operations_chart(filtered: pd.DataFrame):
     chart_rows = filtered.copy()
-    chart_rows["dashboard_core_operation"] = chart_rows["dashboard_category"].apply(map_core_operation)
+    chart_rows["dashboard_core_operation"] = chart_rows["dashboard_division"].apply(map_core_operation)
     chart_rows = chart_rows[chart_rows["dashboard_core_operation"].notna()]
     if chart_rows.empty:
         return None
@@ -1405,22 +1378,6 @@ def render_focus_breakdown(
         return
 
     display_column = "dashboard_focus_label"
-    if key_prefix in {"services", "erasmus"}:
-        other_options = other_item_options(rows, "dashboard_focus_label", top_n=5)
-        selected_separate = st.multiselect(
-            "Items to show separately",
-            other_options,
-            default=[],
-            key=f"{key_prefix}-items-show-separately",
-        )
-        rows = apply_other_grouping(
-            rows,
-            "dashboard_focus_label",
-            "dashboard_focus_display",
-            top_n=5,
-            selected_separate=selected_separate,
-        )
-        display_column = "dashboard_focus_display"
 
     chart = build_income_expense_grouped_chart(
         rows,
@@ -1429,7 +1386,6 @@ def render_focus_breakdown(
         group_title="Item",
     )
     st.plotly_chart(chart, use_container_width=True)
-    render_other_items_table(title, rows, display_column)
     render_chart_source_check(title, rows, display_column)
 
 
@@ -1576,16 +1532,6 @@ def add_metric_legend(chart: go.Figure) -> None:
     )
 
 
-def assign_yf_area(row: pd.Series) -> str:
-    text = dimension_text(row)
-    if "yf extra" in text:
-        return "YF Extra"
-    if "yf main" in text:
-        return "YF Main"
-    extra_keywords = ("erasmus", "project", "travel", "exchange", "x-change", "nva", "esf")
-    return "YF Extra" if any(keyword in text for keyword in extra_keywords) else "YF Main"
-
-
 def map_core_operation(value: str) -> str | None:
     normalized = normalize_label(value)
     if "membership" in normalized:
@@ -1594,127 +1540,46 @@ def map_core_operation(value: str) -> str | None:
         return "Services"
     if "donation" in normalized:
         return "Donations"
-    if "operational" in normalized or "salar" in normalized:
+    if "operational" in normalized:
         return "Operational Expenses"
     return None
 
 
 def membership_rows(filtered: pd.DataFrame) -> pd.DataFrame:
-    return filtered[filtered.apply(lambda row: "membership" in dimension_text(row) or assign_membership_label(row) is not None, axis=1)]
+    return filtered[filtered["dashboard_division"].eq("Membership")]
 
 
 def services_rows(filtered: pd.DataFrame) -> pd.DataFrame:
-    return filtered[filtered.apply(lambda row: assign_service_label(row) is not None, axis=1)]
+    return filtered[filtered["dashboard_division"].eq("Services")]
 
 
 def erasmus_rows(filtered: pd.DataFrame) -> pd.DataFrame:
-    return filtered[filtered.apply(lambda row: "erasmus" in dimension_text(row), axis=1)]
+    return filtered[filtered["dashboard_division"].eq("Erasmus+")]
 
 
 def assign_membership_label(row: pd.Series) -> str | None:
-    text = dimension_text(row)
-    membership_items = {
-        "Forever Young": ("forever young",),
-        "YF Kids": ("yf kids", "kids"),
-        "YF Teens": ("yf teens", "teens"),
-        "YF Youth": ("yf youth", "youth"),
-    }
-    return first_matching_label(text, membership_items)
+    return source_hierarchy_label(row, "dashboard_subdivision")
 
 
 def assign_service_label(row: pd.Series) -> str | None:
-    text = dimension_text(row)
-    service_items = {
-        "English": ("english",),
-        "German": ("german",),
-        "Latvian": ("latvian",),
-        "Academic Drawing": ("academic drawing", "drawing"),
-        "Workshops": ("workshop", "workshops"),
-    }
-    explicit_label = first_matching_label(text, service_items)
-    if explicit_label:
-        return explicit_label
-    return "Other services" if "service" in text else None
+    return source_hierarchy_label(row, "dashboard_subdivision")
 
 
 def assign_erasmus_label(row: pd.Series) -> str | None:
-    division = str(row.get("dashboard_division", "")).strip()
-    subdivision = str(row.get("dashboard_subdivision", "")).strip()
-    if division and normalize_label(division) not in {"unknown", "unknown division", "unclassified"}:
-        return division
-    if subdivision and normalize_label(subdivision) not in {"unknown", "no subdivision", "unclassified"}:
-        return subdivision
-    return "Erasmus+"
+    return source_hierarchy_label(row, "dashboard_subdivision")
 
 
-def first_matching_label(text: str, mapping: dict[str, tuple[str, ...]]) -> str | None:
-    for label, keywords in mapping.items():
-        if any(keyword in text for keyword in keywords):
-            return label
-    return None
-
-
-def dimension_text(row: pd.Series) -> str:
-    values = [
-        row.get("dashboard_category", ""),
-        row.get("dashboard_division", ""),
-        row.get("dashboard_subdivision", ""),
-        row.get("category", ""),
-        row.get("project_name", ""),
-        row.get("description", ""),
-    ]
-    text = " ".join(str(value).lower() for value in values if pd.notna(value))
-    return re.sub(r"\s+", " ", text)
+def source_hierarchy_label(row: pd.Series, column: str) -> str | None:
+    value = str(row.get(column, "")).strip()
+    normalized = normalize_label(value)
+    if not value or normalized in {"unknown", "unknown division", "unclassified", "nan"}:
+        return None
+    return value
 
 
 def categories_with_amount(filtered: pd.DataFrame, amount_column: str) -> list[str]:
     grouped = filtered.groupby("dashboard_category", dropna=False)[amount_column].sum()
     return sorted(grouped[grouped.gt(0)].index.tolist())
-
-
-def apply_other_grouping(
-    rows: pd.DataFrame,
-    item_column: str,
-    display_column: str,
-    amount_columns: tuple[str, str] = ("amount_income", "amount_expense"),
-    top_n: int = 5,
-    selected_separate: list[str] | None = None,
-) -> pd.DataFrame:
-    selected_separate = selected_separate or []
-    data = rows.copy()
-    volume = (
-        data.groupby(item_column, dropna=False)[list(amount_columns)]
-        .sum()
-        .abs()
-        .sum(axis=1)
-        .sort_values(ascending=False)
-    )
-    default_items = set(volume.head(top_n).index.tolist())
-    visible_items = default_items | set(selected_separate)
-    data[display_column] = data[item_column].where(data[item_column].isin(visible_items), "Other")
-    return data
-
-
-def other_item_options(rows: pd.DataFrame, item_column: str, top_n: int = 5) -> list[str]:
-    volume = (
-        rows.groupby(item_column, dropna=False)[["amount_income", "amount_expense"]]
-        .sum()
-        .abs()
-        .sum(axis=1)
-        .sort_values(ascending=False)
-    )
-    return volume.iloc[top_n:].index.tolist()
-
-
-def render_other_items_table(title: str, rows: pd.DataFrame, display_column: str) -> None:
-    if display_column not in rows or "Other" not in set(rows[display_column].dropna()):
-        return
-    other_rows = rows[rows[display_column].eq("Other")].copy()
-    if other_rows.empty:
-        return
-    table = source_trace_table(other_rows)
-    with st.expander(f"{title} — Items included in Other", expanded=False):
-        st.dataframe(table, use_container_width=True, hide_index=True)
 
 
 def render_chart_source_check(title: str, rows: pd.DataFrame, group_column: str) -> None:
@@ -1770,32 +1635,6 @@ def validation_group_table(rows: pd.DataFrame, group_column: str) -> pd.DataFram
         )
         .reset_index()
         .rename(columns={"dashboard_month_label": "Month"})
-    )
-
-
-def source_trace_table(rows: pd.DataFrame) -> pd.DataFrame:
-    source_cols = ["original_category", "original_division", "original_sub", "original_subdivision"]
-    data = rows.copy()
-    for column in source_cols:
-        if column not in data:
-            data[column] = ""
-    return (
-        data.groupby(["dashboard_month_label", *source_cols], dropna=False)
-        .agg(
-            Income=("amount_income", "sum"),
-            Expenses=("amount_expense", "sum"),
-            **{"Number of transactions": ("amount_income", "size")},
-        )
-        .reset_index()
-        .rename(
-            columns={
-                "dashboard_month_label": "Month",
-                "original_category": "Original Category",
-                "original_division": "Original Division",
-                "original_sub": "Original Sub",
-                "original_subdivision": "Original Subdivision",
-            }
-        )
     )
 
 
@@ -2002,8 +1841,6 @@ def build_expense_composition_chart(filtered: pd.DataFrame):
         .reset_index(name="Expenses")
         .rename(columns={category_column: "dashboard_category"})
     )
-    if "dashboard_category_display" not in filtered:
-        expenses = collapse_to_top_categories(expenses, "dashboard_category", "Expenses", top_n=5)
     if expenses.empty:
         expenses = pd.DataFrame({
             "dashboard_month_sort": ["No date"],
@@ -2035,8 +1872,6 @@ def build_revenue_dependency_chart(filtered: pd.DataFrame):
         .reset_index(name="Income")
         .rename(columns={category_column: "dashboard_category"})
     )
-    if "dashboard_category_display" not in filtered:
-        income = collapse_to_top_categories(income, "dashboard_category", "Income", top_n=5)
     if income.empty:
         income = pd.DataFrame({
             "dashboard_month_sort": ["No date"],
@@ -2126,27 +1961,6 @@ def build_stacked_percentage_chart(
         margin={"l": 24, "r": 24, "t": 72, "b": 130},
     )
     return chart
-
-
-def collapse_to_top_categories(df: pd.DataFrame, category_column: str, amount_column: str, top_n: int) -> pd.DataFrame:
-    if df.empty:
-        return df
-
-    top_categories = (
-        df.groupby(category_column)[amount_column]
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_n)
-        .index
-    )
-    collapsed = df.copy()
-    collapsed[category_column] = collapsed[category_column].where(collapsed[category_column].isin(top_categories), "Other")
-    return (
-        collapsed.groupby(["dashboard_month_sort", "dashboard_month_label", category_column], dropna=False)[amount_column]
-        .sum()
-        .reset_index()
-        .sort_values(["dashboard_month_sort", amount_column], ascending=[True, False])
-    )
 
 
 def composition_color_map(labels: Any) -> dict[str, str]:
