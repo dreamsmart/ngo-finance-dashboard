@@ -563,6 +563,32 @@ div[data-baseweb="popover"] li {
 [data-testid="stSidebar"] div[data-testid="stMetricValue"] {
     color: #111827 !important;
 }
+
+[data-testid="stDataFrame"],
+[data-testid="stDataFrame"] div,
+[data-testid="stDataFrame"] span,
+[data-testid="stDataFrame"] p {
+    color: #111827 !important;
+}
+
+[data-testid="stDataFrame"] {
+    background: #ffffff !important;
+}
+
+[data-testid="stDataFrame"] [role="grid"],
+[data-testid="stDataFrame"] [role="row"],
+[data-testid="stDataFrame"] [role="gridcell"],
+[data-testid="stDataFrame"] [role="columnheader"] {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-color: rgba(17,24,39,0.10) !important;
+}
+
+[data-testid="stDataFrame"] [role="columnheader"] {
+    background-color: #f3f4f6 !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
+}
 """
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
@@ -1038,15 +1064,19 @@ def style_chart(chart) -> None:
         colorway=["#0a8527", "#ff6f91", "#55b6ff", "#ffd84d", "#171717"],
         font={"family": "Inter, Arial, sans-serif", "color": "#111827", "size": 13},
         title={"font": {"size": 22, "color": "#111827"}, "x": 0.02},
+        title_font={"color": "#111827"},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0)",
         legend={
             "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.08,
-            "xanchor": "right",
-            "x": 1,
-            "font": {"color": "#374151", "size": 12},
+            "yanchor": "top",
+            "y": -0.18,
+            "xanchor": "center",
+            "x": 0.5,
+            "font": {"color": "#111827", "size": 13},
+            "bgcolor": "rgba(255,255,255,0.92)",
+            "bordercolor": "rgba(17,24,39,0.12)",
+            "borderwidth": 1,
         },
         margin={"l": 64, "r": 32, "t": 88, "b": 72},
     )
@@ -1062,6 +1092,21 @@ def style_chart(chart) -> None:
         title_font={"color": "#374151", "size": 13},
         tickfont={"color": "#4B5563", "size": 12},
     )
+
+
+def readable_legend(y: float = -0.18, title: str = "") -> dict[str, Any]:
+    return {
+        "title": {"text": title},
+        "orientation": "h",
+        "yanchor": "top",
+        "y": y,
+        "xanchor": "center",
+        "x": 0.5,
+        "font": {"color": "#111827", "size": 13},
+        "bgcolor": "rgba(255,255,255,0.92)",
+        "bordercolor": "rgba(17,24,39,0.12)",
+        "borderwidth": 1,
+    }
 
 
 def prepare_dashboard_data(transactions: pd.DataFrame) -> pd.DataFrame:
@@ -1487,15 +1532,7 @@ def build_income_expense_grouped_chart(
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
         margin={"l": 34, "r": 24, "t": 86, "b": 300},
-        legend={
-            "title": {"text": ""},
-            "orientation": "h",
-            "yanchor": "top",
-            "y": -0.52,
-            "xanchor": "center",
-            "x": 0.5,
-            "font": {"size": 12},
-        },
+        legend=readable_legend(y=-0.52),
         annotations=[
             {
                 "text": f"{group_title} shown above month labels.",
@@ -1880,15 +1917,7 @@ def build_category_division_breakdown_by_month_chart(filtered: pd.DataFrame, cat
         font={"family": "Inter, Arial, sans-serif", "color": "#20232a"},
         title_font={"size": 20, "color": "#151515"},
         margin={"l": 34, "r": 24, "t": 92, "b": 330},
-        legend={
-            "title": {"text": "Month"},
-            "orientation": "h",
-            "yanchor": "top",
-            "y": -0.60,
-            "xanchor": "center",
-            "x": 0.5,
-            "font": {"size": 12},
-        },
+        legend=readable_legend(y=-0.60, title="Month"),
         annotations=[
             {
                 "text": "Green bars show income. Red bars show expenses.",
@@ -2084,14 +2113,7 @@ def build_stacked_percentage_chart(
         height=chart_height,
         bargap=0.34 if month_count <= 3 else 0.24,
         uniformtext={"minsize": 10, "mode": "hide"},
-        legend={
-            "orientation": "h",
-            "yanchor": "top",
-            "y": -0.18,
-            "xanchor": "center",
-            "x": 0.5,
-            "title": {"text": category_title},
-        },
+        legend=readable_legend(y=-0.18, title=category_title),
         margin={"l": 24, "r": 24, "t": 72, "b": 130},
     )
     chart.update_yaxes(tickformat=".0%", range=[0, 1], title=y_axis_title)
@@ -2100,14 +2122,7 @@ def build_stacked_percentage_chart(
         height=chart_height,
         bargap=0.34 if month_count <= 3 else 0.24,
         uniformtext={"minsize": 10, "mode": "hide"},
-        legend={
-            "orientation": "h",
-            "yanchor": "top",
-            "y": -0.18,
-            "xanchor": "center",
-            "x": 0.5,
-            "title": {"text": category_title},
-        },
+        legend=readable_legend(y=-0.18, title=category_title),
         margin={"l": 24, "r": 24, "t": 72, "b": 130},
     )
     return chart
